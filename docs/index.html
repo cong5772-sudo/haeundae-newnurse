@@ -796,8 +796,8 @@ const TARGET = CFG.TARGET ?? 0.20;
 const PREV_ALL = CFG.PREV_ALL || {};
 // 연도별 발령·사직 합계 (발령일 기준)
 const yearTot = y => { let p = 0, r = 0; for (const [k, [pp, rr]] of Object.entries(A.dept)) if (k.startsWith(y + '-')){ p += pp; r += rr; } return { p, r }; };
-// 연도별 비교값: 시트에 그 연도 탭이 있으면 실제 값, 없으면 config.js의 PREV_ALL
-const pa = y => { if (A && YEARS.includes(y)){ const t = yearTot(y); return { placed: t.p, rate: t.p ? t.r / t.p : NaN }; } return PREV_ALL[y] || {}; };
+// 연도별 비교값: config.js의 PREV_ALL(확정된 1년 내 사직율 고정값)이 있으면 그 값을 우선, 없으면 시트의 실제 값
+const pa = y => { if (PREV_ALL[y]) return PREV_ALL[y]; if (A && YEARS.includes(y)){ const t = yearTot(y); return { placed: t.p, rate: t.p ? t.r / t.p : NaN }; } return PREV_ALL[y] || {}; };
 const _now = new Date();
 const TODAY = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
 // 아래 값은 API 응답을 받은 뒤 setData()에서 채운다
@@ -820,9 +820,10 @@ function setData(data){
 // 기준 연도(Y0)와 비교 연도(Y1·Y2): 왼쪽 '기준일시'에서 연도를 고르면 그 연도, 아니면 가장 최근 연도
 function setYear(){
   Y0 = SB.y !== 'all' ? SB.y : YLATEST; Y1 = Y0 - 1; Y2 = Y0 - 2;
-  // 부서별 전년도 사직율: 시트에 그 연도 탭이 있으면 실제 값, 없으면 '부서별 발령/사직' 탭의 값
+  // 부서별 전년도 사직율: '부서별 발령/사직' 탭의 확정값 우선, 없으면 그 연도 탭의 실제 값
   const rateOf = (y, d) => {
-    if (!YEARS.includes(y)) return PREVSHEET[d]?.[y] ?? NaN;
+    if (PREVSHEET[d]?.[y] != null) return PREVSHEET[d][y]; // '부서별 발령/사직' 탭의 확정값 우선
+    if (!YEARS.includes(y)) return NaN;
     let p = 0, r = 0;
     for (const [k, [pp, rr]] of Object.entries(A.dept)){ const [c, dd] = k.split('|'); if (dd === d && c.startsWith(y + '-')){ p += pp; r += rr; } }
     return p ? r / p : NaN;
@@ -964,14 +965,15 @@ function kpi(lab, val, unit, sub){ return `<div class="kpi"><span class="lab">${
 // 전년도 비교: 연도별 발령인원을 재직(파랑)·사직(주황)으로 나눈 가로 막대 (전체 기준)
 function yoy(){
   const cy = Y0;
-  const rows = Object.keys(PREV_ALL).map(Number).filter(y => !YEARS.includes(y) && y < YEARS[0]).map(y => { const x = PREV_ALL[y]; const rr = Math.round(x.placed * x.rate); return { y, p: x.placed, r: rr, rate: x.rate, est: true }; });
-  YEARS.forEach(y => { const s = yearTot(y); rows.push({ y, p: s.p, r: s.r, rate: s.p ? s.r / s.p : 0, cur: y === cy, open: y >= TODAY.getFullYear() }); });
+  // 지난 연도는 config.js의 확정값(발령인원·1년 내 사직율)으로 고정, 그 외 연도는 시트의 현재 값
+  const rows = Object.keys(PREV_ALL).map(Number).map(y => { const x = PREV_ALL[y]; return { y, p: x.placed, r: Math.round(x.placed * x.rate), rate: x.rate, est: true, cur: y === cy }; });
+  YEARS.filter(y => !PREV_ALL[y]).forEach(y => { const s = yearTot(y); rows.push({ y, p: s.p, r: s.r, rate: s.p ? s.r / s.p : 0, cur: y === cy, open: y >= TODAY.getFullYear() }); });
   rows.sort((a, b) => a.y - b.y);
   const max = Math.max(...rows.map(x => x.p));
   const ci = rows.findIndex(x => x.cur), prev = ci > 0 ? rows[ci - 1] : null;
-  return `<section class="panel w12 yoy"><div class="ph"><div><h2>전년도 비교</h2><p>신규간호사 전체 기준 · 연도별 발령 탭의 실제 값${rows.some(x => x.est) ? ' · 탭이 없는 연도는 사직율로 환산한 값' : ''}</p></div>
+  return `<section class="panel w12 yoy"><div class="ph"><div><h2>전년도 비교</h2><p>신규간호사 전체 기준 · ${rows.filter(x => x.est).map(x => x.y).join('·')}년은 확정된 1년 내 사직율(고정값) · ${rows.filter(x => !x.est).map(x => x.y).join('·')}년은 현재 값</p></div>
     <div class="legend"><span><i class="sw" style="--c:var(--s1)"></i>재직</span><span><i class="sw" style="--c:var(--s2)"></i>사직</span></div></div>
-    <div class="ybars">${rows.map(x => `<div class="yb" data-tip="${x.y}년\n발령 ${x.p}명 · 사직 ${x.r}명${x.est ? ' (환산)' : ''} · 사직율 ${pct(x.rate)}">
+    <div class="ybars">${rows.map(x => `<div class="yb" data-tip="${x.y}년\n발령 ${x.p}명 · 사직 ${x.r}명${x.est ? ' (확정값, 사직 인원은 사직율로 환산)' : ''} · 사직율 ${pct(x.rate)}">
       <b>${x.y}</b><div class="ytr"><i style="width:${(x.p - x.r) / max * 100}%;background:var(--s1)"></i><i style="width:${x.r / max * 100}%;background:var(--s2)"></i></div>
       <span>총 ${x.p}명${x.open ? ' (진행중)' : ''}</span></div>`).join('')}</div>
     <div class="ycards">${rows.map(x => `<div class="yc${x.cur ? ' cur' : ''}"><small>${x.y}년 발령 · 사직율</small><b>${x.p}명</b><span>사직율 <em>${pct(x.rate)}</em>${x.cur && prev ? ` · <span class="${x.rate > prev.rate ? 'up' : 'dn'}">${x.rate > prev.rate ? '▲' : '▼'}${Math.abs((x.rate - prev.rate) * 100).toFixed(1)}%p vs ${prev.y}</span>` : ''}</span></div>`).join('')}</div>
