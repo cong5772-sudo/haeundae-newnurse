@@ -985,6 +985,10 @@ function yoy(){
 }
 function p1(){
   const t = totals(), bc = byCohort(), ds = depts();
+  // 상단 요약 카드는 항상 기준 연도(Y0: 왼쪽 기준일시 연도, '전체'면 최근 연도) 회차만 — 비교값은 config.js 확정값
+  const kc = COH.filter(c => c.startsWith(Y0 + '-') && inC(c));
+  const kt = ds.reduce((a, d) => { for (const c of kc){ const v = d.by[c]; if (v){ a.p += v[0]; a.r += v[1]; } } return a; }, { p: 0, r: 0 });
+  const klatest = kc.at(-1);
   const sel = COH.filter(inC), latest = sel.at(-1) || COH.at(-1);
   const groups = GNAMES.filter(inG).map(g => ({ g, p: ds.filter(d => d.g === g).reduce((s, d) => s + d.p, 0) }));
   // 회차별 발령인원 표
@@ -1041,10 +1045,10 @@ function p1(){
     <button class="chip ghost" data-compact="1" id="t-compact" aria-pressed="${!!S.compact}">${S.compact ? '부서별 펼치기' : '소계만 보기'}</button></div>`;
   return `<div style="display:grid;gap:20px">
   <div class="kpis">
-    ${kpi(SB.y !== 'all' ? Y0 + '년 발령인원' : (YEARS.length > 1 ? '총 발령인원 (전체 연도)' : '총 발령인원 (누적)'), t.p, '명', cmp([[Y1 + '년', (pa(Y1).placed ?? '–') + '명'], [Y2 + '년', (pa(Y2).placed ?? '–') + '명']]))}
-    ${kpi('발령 회차', sel.length, '회', `최근 ${latest.replaceAll('-', '.')} (${cLab(latest)})`)}
-    ${kpi('현재 재직인원', t.p - t.r, '명', `사직 ${t.r}명 제외`)}
-    ${kpi('사직율', pct(t.r / t.p), '', cmp([[Y1 + '년', pct(pa(Y1).rate)], [Y2 + '년', pct(pa(Y2).rate)]]))}
+    ${kpi(Y0 + '년 발령인원', kt.p, '명', cmp([[Y1 + '년', (pa(Y1).placed ?? '–') + '명'], [Y2 + '년', (pa(Y2).placed ?? '–') + '명']]))}
+    ${kpi(Y0 + '년 발령 회차', kc.length, '회', klatest ? `최근 ${klatest.replaceAll('-', '.')} (${COH.filter(x => x.startsWith(Y0 + '-')).indexOf(klatest) + 1}차)` : '–')}
+    ${kpi('현재 재직인원', kt.p - kt.r, '명', `${Y0}년 발령 중 사직 ${kt.r}명 제외`)}
+    ${kpi(Y0 + '년 사직율', pct(kt.r / kt.p), '', cmp([[Y1 + '년', pct(pa(Y1).rate)], [Y2 + '년', pct(pa(Y2).rate)]]))}
   </div>
   ${yoy()}
   <div class="grid">
@@ -1565,7 +1569,7 @@ function navSync(){
   const hb = document.getElementById('hbtns');
   if (hb) hb.innerHTML = (S.page === 'p1' ? `<button class="hbtn main" data-prreport="1" title="여러 페이지에서 보고할 항목만 골라 한 문서로 인쇄·PDF 저장">📑 보고서 취합 출력</button>` : '')
     + `<button class="hbtn" data-prpage="1" title="이 페이지에서 원하는 항목만 골라 인쇄·PDF 저장">🖨 페이지 인쇄</button>`;
-  document.getElementById('pt').textContent = pg.t;
+  document.getElementById('pt').textContent = S.page === 'p1' && Y0 ? `${Y0}년 발령현황` : pg.t;
   document.getElementById('ps').textContent = pg.s;
   document.querySelectorAll('.navbtn').forEach(b => b.setAttribute('aria-current', b.dataset.page === S.page ? 'page' : 'false'));
 }
@@ -1650,7 +1654,7 @@ function calc(){
 function render(){
   navSync();
   if (!A) return;
-  setYear();
+  setYear(); navSync(); // 연도가 바뀌면 제목(OOOO년 발령현황)도 다시
   stamp();
   filters();
   const v = document.getElementById('view');
