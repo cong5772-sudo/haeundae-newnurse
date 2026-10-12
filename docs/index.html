@@ -808,7 +808,7 @@ const TODAY = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
 let A = null, PREV = {}, PREVSHEET = {}, GROUPS = [], GNAMES = [], DPOS = {}, COH = [], YEARS = [], YLATEST, DAY0, Y0, Y1, Y2, YINIT = false;
 const grpOf = d => DPOS[d]?.[2] ?? '기타';
 // 사직 집계 기준 (왼쪽 '사직 집계 기준'): ye = 발령 연도 말(12/31)까지, y1 = 입사 후 1년(365일) 이내, now = 오늘까지
-const RBL = { ye: '연도 말까지', y1: '입사 1년 이내', now: '오늘까지' };
+const RBL = { ye: '연도 말까지', now: '오늘까지' }; // 입사 1년 이내(y1)는 사용자 요청으로 선택지에서 제외 (계산 함수는 유지)
 let RAW = null;
 function rbKeep(c, d){
   if (SB.rb === 'y1') return d <= 365;
@@ -1651,7 +1651,7 @@ function filters(){
   box.innerHTML = `
     <div class="fs"><span class="fl">기준일시</span><div class="cg">${chip('data-sy', 'all', '전체', SB.y === 'all')}${years.map(y => chip('data-sy', y, `${y}년`, SB.y === y)).join('')}</div></div>
     <div class="fs"><span class="fl">사직 집계 기준</span><div class="cg">${Object.entries(RBL).map(([k, l]) => chip('data-rb', k, l, SB.rb === k)).join('')}</div>
-      <p class="fhint">${{ ye: '발령 연도의 12월 31일까지 사직한 인원 (연말 확정 기준)', y1: '입사 후 365일 안에 사직한 인원', now: '오늘까지 사직한 모든 인원' }[SB.rb]}</p></div>
+      <p class="fhint">${{ ye: '발령 연도의 12월 31일까지 사직한 인원 (연말 확정 기준)', now: '오늘까지 사직한 모든 인원' }[SB.rb]}</p></div>
     <div class="fs"><span class="fl">분기</span><div class="cg">${chip('data-sq', 'all', '전체', !SB.q.length)}${[0, 1, 2, 3].map(q => chip('data-sq', q, `${q + 1}분기`, SB.q.includes(q), !okQ.has(`quarter-${Y}-${q * 3}`))).join('')}</div></div>
     <div class="fs"><span class="fl">월</span><div class="cg mg">${Array.from({ length: 12 }, (_, m) => chip('data-sm', m, `${m + 1}월`, SB.m.includes(m), !okM.has(`month-${Y}-${m}`))).join('')}</div></div>
     <div class="fs"><label class="fl" for="sel-g">부서</label><select id="sel-g"><option value="all">전체 부서</option>${GNAMES.map(g => `<option value="${g}" ${S.g === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
