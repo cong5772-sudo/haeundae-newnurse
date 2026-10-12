@@ -839,8 +839,8 @@ const S = { c:'all', g:'all', d:'all', page:'p1', tab:'hr', sort:{k:'tot',dir:-1
 const SB = { y:'all', q:[], m:[] };
 
 const pct = (x, d=1) => isFinite(x) ? (x*100).toFixed(d) + '%' : '–';
-// 발령현황·부서별 사직은 발령일이 선택 기간에 들어가는 회차만, 사직분석은 모든 회차(기간은 사직일에 적용)
-const inC = c => S.page === 'p2' || PS.mode === 'now' || inPer(new Date(c + 'T00:00:00'), curPeriod());
+// 발령현황·부서별 사직은 발령일이 선택 기간에 들어가는 회차만, 사직분석은 선택한 발령 연도의 모든 회차(연도 '전체'면 전 회차)
+const inC = c => S.page === 'p2' ? (SB.y === 'all' || c.startsWith(SB.y + '-')) : (PS.mode === 'now' || inPer(new Date(c + 'T00:00:00'), curPeriod()));
 const inD = d => S.d === 'all' || S.d === d;
 const inG = g => S.g === 'all' || S.g === g;
 const days = (a, b) => Math.round((b - a) / 864e5);
@@ -940,7 +940,8 @@ function survival(el){
         <text x="${(x(1)+x(3))/2}" y="${T+12}" text-anchor="middle" font-size="10.5" fill="var(--crit-ink)">조기사직 집중 구간</text>`;
   for (const s of series){
     const d = s.pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.m)},${y(p.v)}`).join('');
-    g += `<path d="${d}" fill="none" stroke="${s.col}" stroke-width="2" stroke-linejoin="round"/>`;
+    const old = SB.y === 'all' && !s.c.startsWith(YLATEST + '-'); // 전체 연도 비교 때 이전 연도는 점선
+    g += `<path d="${d}" fill="none" stroke="${s.col}" stroke-width="2" stroke-linejoin="round"${old ? ' stroke-dasharray="5 4" opacity=".8"' : ''}/>`;
     for (const p of s.pts) g += `<circle cx="${x(p.m)}" cy="${y(p.v)}" r="${p === s.pts.at(-1) ? 4.5 : 3}" fill="${s.col}" stroke="var(--surface)" stroke-width="2"/>
       <circle cx="${x(p.m)}" cy="${y(p.v)}" r="11" fill="transparent" data-tip="${cLab(s.c)} · 입사 ${p.m}개월\n잔존율 ${pct(p.v)} (누적 사직 ${p.gone}/${p.n}명)"/>`;
     const e = s.pts.at(-1);
@@ -1265,7 +1266,7 @@ function p2(){
       ${t.r ? (() => { let cum = 0; return `<div class="tw"><table class="mt"><thead><tr><th>발생 시기</th><th class="num">인원</th><th class="num">비율</th><th class="num">누적 비율</th></tr></thead><tbody>
         ${per.map(x => { cum += x.n; return `<tr${x.n ? '' : ' class="zrow"'}><td>${x.p}</td><td class="num">${x.n}명</td><td class="num">${pct(x.n / t.r)}</td><td class="num">${pct(cum / t.r)}</td></tr>`; }).join('')}
         </tbody><tfoot><tr><td>합계</td><td class="num">${t.r}명</td><td class="num">100.0%</td><td></td></tr></tfoot></table></div>`; })() : ''}</section>
-    <section class="panel"><div class="ph"><div><h2>회차별 생존곡선</h2><p>입사 후 경과 개월별 잔존율 · 회차 기준이라 조회 기간과 관계없이 전체 표시</p></div>
+    <section class="panel"><div class="ph"><div><h2>회차별 생존곡선</h2><p>입사 후 경과 개월별 잔존율 · ${SB.y === 'all' ? '전체 연도 회차 (연도별 비교)' : SB.y + '년 발령 회차'}</p></div>
       <div class="legend">${COH.filter(inC).map(c => `<span><i class="ln" style="--c:${SER(COH.indexOf(c))}"></i>${cLab(c)}</span>`).join('')}</div></div>
       <div id="surv"></div>
       ${survNote()}</section>
