@@ -1166,6 +1166,8 @@ function periodBar(pr, list, idx){
 
 function p2(){
   const list = periodList(PS.mode), pr = curPeriod(), idx = list.findIndex(x => x.key === pr.key);
+  // 사직율의 분모 이름: 연도·전체 기간이면 발령 인원과 같고, 분기·월이면 '기간 중 재직'(기간 시작 전 사직자 제외)
+  const NL = PS.mode === 'now' || PS.mode === 'year' ? '발령' : '기간 중 재직';
   const t = perTotals(pr), rate = t.n ? t.r / t.n : NaN, res = resP(pr);
   const prev = idx > 0 ? list[idx - 1] : null, pt = prev ? perTotals(prev) : null, prate = pt && pt.n ? pt.r / pt.n : null;
   const showT = PS.mode === 'now' || PS.mode === 'year';
@@ -1195,7 +1197,7 @@ function p2(){
     const tot = rs.reduce((s, r) => s + r[6], 0);
     const cnt = f => { const m = {}; for (const r of rs) for (const k of [].concat(f(r))) m[k] = (m[k] || 0) + r[6]; return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}명`).join(' · '); };
     const avg = tot ? Math.round(rs.reduce((s, r) => s + r[5] * r[6], 0) / tot) : 0;
-    return `${o.x.label}${o.x.open ? ' (진행 중)' : ''}\n사직 ${o.r}명 / 재직 ${o.n}명 · 사직율 ${o.n ? pct(o.r / o.n) : '–'}`
+    return `${o.x.label}${o.x.open ? ' (진행 중)' : ''}\n사직 ${o.r}명 / ${NL} ${o.n}명 · 사직율 ${o.n ? pct(o.r / o.n) : '–'}`
       + (tot ? `\n──────────\n발령회차: ${cnt(r => cLab(r[0]))}\n부서군: ${cnt(r => r[1])}\n사직 시기: ${cnt(r => r[2])}\n사직 사유: ${cnt(r => r[3].split(',').map(s => s.trim()))}\n평균 근속: ${avg}일 (약 ${(avg / 30.44).toFixed(1)}개월)` : '\n이 기간 사직자 없음')
       + '\n(누르면 선택 / 해제 · 이름은 사직자 명단(관리자)에서 확인)';
   };
@@ -1214,7 +1216,7 @@ function p2(){
 
   const fa = facetP(A.ai, pr), fr = facetP(A.rank, pr), fg = facetP(A.gender, pr);
   const fmax = f => Math.max(showT ? TARGET * 1.4 : 0.05, ...Object.values(f).map(([n, r]) => r / n)) * 1.1;
-  const rateItems = (order, f) => order.filter(k => f[k]).map(k => { const [n, r] = f[k]; return { label: k === '여' || k === '남' ? k + '성' : k, v: r / n, vl: pct(r / n), n, thin: n < 10, c: k === '미기재' ? 'var(--muted)' : 'var(--s1)', tip: `${k}: 기간 중 재직 ${n}명 중 사직 ${r}명 (${pct(r / n)})${n < 10 ? '\n표본 10명 미만, 해석 주의' : ''}` }; });
+  const rateItems = (order, f) => order.filter(k => f[k]).map(k => { const [n, r] = f[k]; return { label: k === '여' || k === '남' ? k + '성' : k, v: r / n, vl: pct(r / n), n, thin: n < 10, c: k === '미기재' ? 'var(--muted)' : 'var(--s1)', tip: `${k}: ${NL} ${n}명 중 사직 ${r}명 (${pct(r / n)})${n < 10 ? '\n표본 10명 미만, 해석 주의' : ''}` }; });
   const reasons = {};
   for (const r of res){ for (const k of r[3].split(',')) reasons[k.trim()] = (reasons[k.trim()] || 0) + r[6]; }
   const rs = Object.entries(reasons).sort((a, b) => (a[0] === '미기재') - (b[0] === '미기재') || (a[0] === '기타') - (b[0] === '기타') || b[1] - a[1]);
@@ -1230,9 +1232,9 @@ function p2(){
   const trCol = b => b === '내과계' ? 'var(--s1)' : 'var(--s2)';
   const trackBlock = trs.length ? `<div class="subsec"><h3>내과계 · 외과계 사직율</h3><p>병동계 내과 14A·14B·13A·13B·12A·12B·11B / 외과 11A·10A·10B·9A·9B·8A·8B·7A·7B · 중환자계 내과 MICU / 외과 SICU·EICU</p></div>
     <div class="split">
-      <div>${vbars(trs.map(x => ({ label: x.k.replace(' ', '\n'), sub: `${x.r} / ${x.n}명`, v: x.r / x.n, vl: pct(x.r / x.n), c: trCol(x.b), tip: `${x.k}\n${pr.label}: 사직 ${x.r} / 재직 ${x.n}명 = ${pct(x.r / x.n)}` })), { max: Math.max(showT ? TARGET * 1.4 : .05, ...trs.map(x => x.r / x.n)) * 1.15, refs: refs(rate), h: 190 })}
+      <div>${vbars(trs.map(x => ({ label: x.k.replace(' ', '\n'), sub: `${x.r} / ${x.n}명`, v: x.r / x.n, vl: pct(x.r / x.n), c: trCol(x.b), tip: `${x.k}\n${pr.label}: 사직 ${x.r} / ${NL} ${x.n}명 = ${pct(x.r / x.n)}` })), { max: Math.max(showT ? TARGET * 1.4 : .05, ...trs.map(x => x.r / x.n)) * 1.15, refs: refs(rate), h: 190 })}
         <div class="legend"><span><i class="sw" style="--c:var(--s1)"></i>내과계</span><span><i class="sw" style="--c:var(--s2)"></i>외과계</span></div></div>
-      <div class="tw"><table class="mt"><thead><tr><th>구분</th><th>계열</th><th class="num">재직</th><th class="num">사직</th><th class="num">사직율</th><th class="num">평균 대비</th></tr></thead><tbody>
+      <div class="tw"><table class="mt"><thead><tr><th>구분</th><th>계열</th><th class="num">${NL}</th><th class="num">사직</th><th class="num">사직율</th><th class="num">평균 대비</th></tr></thead><tbody>
         ${trs.map(x => `<tr><td>${x.a}</td><td><span class="trk ${x.b === '내과계' ? 'med' : 'sur'}">${x.b}</span></td><td class="num">${x.n}명</td><td class="num">${x.r}명</td><td class="num"><b>${pct(x.r / x.n)}</b></td><td class="num">${dpp(x.r / x.n, rate)}</td></tr>`).join('')}
         </tbody><tfoot>
         ${mN ? `<tr><td colspan="2">내과계 전체</td><td class="num">${mN}명</td><td class="num">${mR}명</td><td class="num">${pct(mR / mN)}</td><td class="num">${dpp(mR / mN, rate)}</td></tr>` : ''}
@@ -1269,7 +1271,7 @@ function p2(){
   ${periodBar(pr, list, idx)}
   <div class="kpis">
     ${kpi(PS.mode === 'now' ? '사직율 (누적)' : pr.multi ? '선택 기간 사직율' : '기간 사직율', pct(rate), '', showT && isFinite(rate) ? `${stBadge(rate > TARGET ? 'crit' : 'good')} 목표 대비 ${rate > TARGET ? '+' : ''}${((rate - TARGET) * 100).toFixed(1)}%p ${delta}` : delta || '연간 목표 20%는 현재·연도 조회에서 비교')}
-    ${kpi('사직인원', t.r, '명', `기간 중 재직 ${t.n}명 중`)}
+    ${kpi('사직인원', t.r, '명', `${NL} ${t.n}명 중`)}
     ${kpi('조기사직 (3개월 이내)', early, '명', t.r ? `기간 사직자의 <b class="num">${pct(early / t.r)}</b>` : '–')}
     ${kpi('사직까지 평균 근속', t.r ? Math.round(avgD) : '–', t.r ? '일' : '', t.r ? `약 ${(avgD / 30.44).toFixed(1)}개월` : '해당 기간 사직 없음')}
   </div>
@@ -1277,18 +1279,18 @@ function p2(){
     <section class="panel w12"><div class="ph"><div><h2>${PS.mode === 'now' ? '월별' : MODES.find(m => m[0] === PS.mode)[1] + '별'} 사직 추이</h2><p>막대: 사직 인원 · 아래: 기간 사직율 · 막대를 눌러 여러 기간을 함께 선택</p></div>
       <div class="ph-r">${PS.mode !== 'now' ? `<div class="legend"><span><i class="sw" style="--c:var(--s1)"></i>선택한 기간</span><span><i class="sw" style="--c:color-mix(in oklab, var(--s1) 32%, var(--surface))"></i>다른 기간</span></div>` : ''}${adminLink()}</div></div>
       <div class="vscroll">${trendHtml}</div></section>
-    <section class="panel w12"><div class="ph"><div><h2>부서 구분별 사직율</h2><p>${esc(pr.label)} · 기간 중 재직 인원 대비 사직 인원 · 상단 부서군 필터와 함께 적용</p></div>${legend(rate)}</div>
+    <section class="panel w12"><div class="ph"><div><h2>부서 구분별 사직율</h2><p>${esc(pr.label)} · ${NL} 인원 대비 사직 인원 · 상단 부서군 필터와 함께 적용</p></div>${legend(rate)}</div>
       ${gsP.length ? `<div class="split">
-        <div>${vbars(gsP.map(x => ({ label: x.g, sub: `${x.r} / ${x.n}명`, v: x.r / x.n, vl: pct(x.r / x.n), c: x === gTop && gsP.length > 1 ? 'var(--s2)' : 'var(--s1)', tip: `${x.g}\n${pr.label}: 사직 ${x.r} / 재직 ${x.n}명 = ${pct(x.r / x.n)}` })), { max: Math.max(showT ? TARGET * 1.4 : .05, ...gsP.map(x => x.r / x.n)) * 1.15, refs: refs(rate), h: 200 })}</div>
-        <div class="tw"><table class="mt"><thead><tr><th>구분</th><th class="num">재직</th><th class="num">사직</th><th class="num">사직율</th><th class="num">3개월 내 사직</th><th class="num">평균 대비</th></tr></thead><tbody>
+        <div>${vbars(gsP.map(x => ({ label: x.g, sub: `${x.r} / ${x.n}명`, v: x.r / x.n, vl: pct(x.r / x.n), c: x === gTop && gsP.length > 1 ? 'var(--s2)' : 'var(--s1)', tip: `${x.g}\n${pr.label}: 사직 ${x.r} / ${NL} ${x.n}명 = ${pct(x.r / x.n)}` })), { max: Math.max(showT ? TARGET * 1.4 : .05, ...gsP.map(x => x.r / x.n)) * 1.15, refs: refs(rate), h: 200 })}</div>
+        <div class="tw"><table class="mt"><thead><tr><th>구분</th><th class="num">${NL}</th><th class="num">사직</th><th class="num">사직율</th><th class="num">3개월 내 사직</th><th class="num">평균 대비</th></tr></thead><tbody>
           ${gsP.map(x => `<tr${x === gTop && gsP.length > 1 ? ' class="top"' : ''}><td><b>${x.g}</b></td><td class="num">${x.n}명</td><td class="num">${x.r}명</td><td class="num"><b>${pct(x.r / x.n)}</b></td><td class="num">${x.e}명${x.r ? ` <span class="zero">(${pct(x.e / x.r, 0)})</span>` : ''}</td><td class="num">${dpp(x.r / x.n, rate)}</td></tr>`).join('')}
         </tbody><tfoot><tr><td>합계</td><td class="num">${t.n}명</td><td class="num">${t.r}명</td><td class="num">${pct(rate)}</td><td class="num">${early}명</td><td></td></tr></tfoot></table></div>
       </div>
       ${gsP.length > 1 && gTop.r ? `<div class="note">${esc(pr.label)} 기준 <b>${gTop.g}</b>의 사직율(${pct(gTop.r / gTop.n)})이 가장 높습니다. 주황 막대로 표시했습니다.</div>` : ''}` : '<p class="note">이 기간에 재직한 인원이 없습니다.</p>'}
       ${trackBlock}</section>
-    <section class="panel w7"><div class="ph"><div><h2>발령일자별 사직율</h2><p>막대 아래: 기간 중 사직 / 재직 인원</p></div>${legend(rate)}</div>
-      ${bc.length ? vbars(bc.map(b => ({ label: cLab(b.c), sub: `${b.r} / ${b.n}명`, v: b.r / b.n, vl: pct(b.r / b.n), c: 'var(--s1)', tip: `${cLab(b.c)} ${b.c}\n${pr.label}: 사직 ${b.r} / 재직 ${b.n}명 = ${pct(b.r / b.n)}` })), { max: rmax, refs: refs(rate), h: 170 }) : '<p class="note">이 기간에 재직한 발령 회차가 없습니다.</p>'}
-      ${bc.length ? `<div class="tw"><table class="mt"><thead><tr><th>회차</th><th class="num">발령일</th><th class="num">재직</th><th class="num">사직</th><th class="num">사직율</th><th class="num">${showT ? '목표 20% 대비' : '평균 대비'}</th></tr></thead><tbody>
+    <section class="panel w7"><div class="ph"><div><h2>발령일자별 사직율</h2><p>막대 아래: 기간 중 사직 / ${NL} 인원</p></div>${legend(rate)}</div>
+      ${bc.length ? vbars(bc.map(b => ({ label: cLab(b.c), sub: `${b.r} / ${b.n}명`, v: b.r / b.n, vl: pct(b.r / b.n), c: 'var(--s1)', tip: `${cLab(b.c)} ${b.c}\n${pr.label}: 사직 ${b.r} / ${NL} ${b.n}명 = ${pct(b.r / b.n)}` })), { max: rmax, refs: refs(rate), h: 170 }) : '<p class="note">이 기간에 재직한 발령 회차가 없습니다.</p>'}
+      ${bc.length ? `<div class="tw"><table class="mt"><thead><tr><th>회차</th><th class="num">발령일</th><th class="num">${NL}</th><th class="num">사직</th><th class="num">사직율</th><th class="num">${showT ? '목표 20% 대비' : '평균 대비'}</th></tr></thead><tbody>
         ${bc.map(b => `<tr><td><b>${cLab(b.c)}</b></td><td class="num">${b.c.replaceAll('-', '.')}</td><td class="num">${b.n}명</td><td class="num">${b.r}명</td><td class="num"><b>${pct(b.r / b.n)}</b></td><td class="num">${dpp(b.r / b.n, showT ? TARGET : rate)}</td></tr>`).join('')}
         </tbody><tfoot><tr><td>합계</td><td></td><td class="num">${t.n}명</td><td class="num">${t.r}명</td><td class="num">${pct(rate)}</td><td class="num">${showT ? dpp(rate, TARGET) : ''}</td></tr></tfoot></table></div>` : ''}</section>
     <section class="panel w5"><div class="ph"><div><h2>사직 발생 시기별 분석</h2><p>기간 중 사직자의 발령→사직 기간 · 단위: 명</p></div></div>
@@ -1307,7 +1309,7 @@ function p2(){
       ${hbars(rateItems(RANK_ORDER, fr), { max: fmax(fr), refs: showT ? [{ v: TARGET }] : [] })}
       ${(() => { const ks = RANK_ORDER.filter(k => fr[k]); if (!ks.length) return '';
         const N = ks.reduce((s, k) => s + fr[k][0], 0), R = ks.reduce((s, k) => s + fr[k][1], 0);
-        return `<div class="tw"><table class="mt rkt"><thead><tr><th>석차 구간</th><th class="num">${PS.mode === 'now' ? '발령' : '기간 중 재직'}</th><th class="num">사직</th><th class="num">사직율</th><th class="num">구간 비중</th><th class="num">사직자 중 비중</th></tr></thead><tbody>
+        return `<div class="tw"><table class="mt rkt"><thead><tr><th>석차 구간</th><th class="num">${NL}</th><th class="num">사직</th><th class="num">사직율</th><th class="num">구간 비중</th><th class="num">사직자 중 비중</th></tr></thead><tbody>
           ${ks.map(k => { const [n, r] = fr[k]; return `<tr${k === '미기재' ? ' class="zrow"' : ''}><td><b>${k}</b></td><td class="num">${n}명</td><td class="num">${r ? `<b class="rdx">${r}명</b>` : '0명'}</td><td class="num"><b>${pct(r / n)}</b></td><td class="num">${pct(n / Math.max(1, N), 0)}</td><td class="num">${R ? pct(r / R, 0) : '–'}</td></tr>`; }).join('')}
           </tbody><tfoot><tr><td>합계</td><td class="num">${N}명</td><td class="num">${R}명</td><td class="num">${pct(R / Math.max(1, N))}</td><td class="num">100%</td><td class="num">${R ? '100%' : '–'}</td></tr></tfoot></table></div>`; })()}
       ${PS.mode === 'now' ? '<div class="note">등급·구간별 인원(n)이 적으면 1~2명 차이로 사직율이 크게 달라집니다. 빗금 막대(10명 미만)는 해석에 주의하세요.</div>' : ''}</section>
@@ -1315,7 +1317,7 @@ function p2(){
       ${t.r && unknown / t.r > .3 ? `<span class="st warn"><i aria-hidden="true">▲</i>사유 불명 ${pct(unknown / t.r, 0)}</span>` : ''}</div>
       ${t.r ? hbars(rs.map(([k, v]) => ({ label: k, v, vl: v + '명', c: k === '미기재' || k === '기타' ? 'var(--muted)' : 'var(--s2)', tip: `${k}: ${v}명` }))) : none}
       ${t.r && unknown / t.r > .3 ? `<div class="note">'기타'와 '미기재'가 사직자의 ${pct(unknown / t.r, 0)}입니다. 퇴직 면담 때 <b>업무적응 · 근무환경 · 인간관계 · 건강 · 이직 · 학업 · 개인/가족</b>처럼 사유 코드를 표준화해야 원인 분석이 가능합니다.</div>` : ''}</section>
-    <section class="panel"><div class="ph"><div><h2>성별 사직율</h2><p>기간 중 재직 인원 기준</p></div>${legend()}</div>
+    <section class="panel"><div class="ph"><div><h2>성별 사직율</h2><p>${NL} 인원 기준</p></div>${legend()}</div>
       ${hbars(rateItems(['여', '남'], fg), { max: fmax(fg), refs: showT ? [{ v: TARGET }] : [] })}
       ${gm && gf && gm[1] / gm[0] > 1.5 * (gf[1] / gf[0]) && gm[1] >= 2 ? `<div class="note">이 기간 남성 사직율(${pct(gm[1] / gm[0])})이 여성(${pct(gf[1] / gf[0])})보다 크게 높습니다. 남성 대상 멘토링이나 동료 연결 같은 별도 지원을 검토할 만합니다.</div>` : ''}
       ${maleBlock}</section>
