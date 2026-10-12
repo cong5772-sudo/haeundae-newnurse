@@ -738,6 +738,10 @@ tfoot td,.gt tfoot td,.gt tfoot td:first-child{background:var(--row-tot);color:v
   #printbox tr{break-inside:avoid}
   #printbox thead{display:table-header-group}
 }
+.tlyr{display:flex;gap:4px;margin-left:auto}
+.tlyr .chip{height:28px;padding:0 10px;font-size:12px}
+.tlyr .chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+.ph h2 small.tly{font-size:12.5px;font-weight:600;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -998,14 +1002,18 @@ function p1(){
   const grpTable = `<div class="tw"><table class="gt gtab"><thead><tr><th>회차</th>${gcols.map(g => `<th class="num">${g}</th>`).join('')}<th class="num">합계</th></tr></thead><tbody>
     ${gm.map(r => { const rt = r.v.reduce((s, x) => s + x, 0); return `<tr><td><b>${cLab(r.c)}</b> <span class="zero">${cShort(r.c)}</span></td>${r.v.map(v => gcell(v, rt)).join('')}<td class="num"><b>${rt}명</b></td></tr>`; }).join('')}
     </tbody><tfoot><tr><td>합계</td>${gtot.map(v => `<td class="num">${v}명<small class="sh">${pct(v / Math.max(1, t.p), 0)}</small></td>`).join('')}<td class="num">${t.p}명</td></tr></tfoot></table></div>`;
-  const tl = bc.map(b => {
+  // 발령 회차 정보: 한 해의 회차만 (기본 = 기준 연도, 오른쪽 위 연도 버튼으로 다른 해 보기)
+  const tlY = YEARS.includes(S.tly) ? S.tly : (YEARS.includes(Y0) ? Y0 : YLATEST);
+  const tlC = bc.filter(b => b.c.startsWith(tlY + '-'));
+  const tlBtns = YEARS.length > 1 ? `<div class="tlyr" role="group" aria-label="발령 연도">${YEARS.map(y => `<button class="chip" data-tly="${y}" aria-pressed="${y === tlY}">${y}년</button>`).join('')}</div>` : '';
+  const tl = tlC.map((b, i) => {
     const dd = days(new Date(b.c + 'T00:00:00'), TODAY);
-    return `<div class="tli ${inC(b.c) ? '' : 'dim'}" data-tip="${cLab(b.c)} ${b.c}\n발령 ${b.p}명 · 사직 ${b.r}명 · 재직 ${b.p-b.r}명">
-      <span class="no">${cLab(b.c)}</span><span class="dt">${b.c.replaceAll('-', '.')}</span>
+    return `<div class="tli ${inC(b.c) ? '' : 'dim'}" data-tip="${tlY}년 ${i + 1}차 ${b.c}\n발령 ${b.p}명 · 사직 ${b.r}명 · 재직 ${b.p-b.r}명">
+      <span class="no">${i + 1}차</span><span class="dt">${b.c.replaceAll('-', '.')}</span>
       <div class="meta"><span>발령 <b class="num">${b.p}</b>명</span><span class="num">D+${dd}</span></div>
       <div class="bar2" aria-hidden="true"><b style="flex:${b.p-b.r}"></b><em style="flex:${b.r}"></em></div>
       <div class="meta"><span>재직 ${b.p-b.r}</span><span>사직 ${b.r}</span></div></div>`;
-  }).join('') + `<div class="tli next"><span class="no" style="color:var(--muted)">${COH.length+1}차</span><span class="dt">발령 예정</span><div class="meta"><span>다음 발령일자가 시트에 추가되면 자동으로 표시됩니다</span></div></div>`;
+  }).join('') + (tlY !== YLATEST ? '' : `<div class="tli next"><span class="no" style="color:var(--muted)">${tlC.length + 1}차</span><span class="dt">발령 예정</span><div class="meta"><span>다음 발령일자가 시트에 추가되면 자동으로 표시됩니다</span></div></div>`);
 
   // dept × cohort table
   // 구분별 그룹 표: 그룹 머리행 → 부서 → 소계, 마지막에 전체 합계
@@ -1040,7 +1048,7 @@ function p1(){
   </div>
   ${yoy()}
   <div class="grid">
-    <section class="panel w12"><div class="ph"><div><h2>발령 회차 정보</h2><p>막대: 재직(파랑) · 사직(빨강) 비율, D+는 기준일까지 경과일</p></div></div><div class="tl">${tl}</div></section>
+    <section class="panel w12"><div class="ph"><div><h2>발령 회차 정보 <small class="tly">${tlY}년</small></h2><p>막대: 재직(파랑) · 사직(빨강) 비율, D+는 기준일까지 경과일</p></div>${tlBtns}</div><div class="tl">${tl}</div></section>
     <section class="panel w7"><div class="ph"><div><h2>발령일자별 총 발령인원</h2><p>단위: 명</p></div></div>
       ${vbars(bc.filter(b => inC(b.c)).map(b => ({ label: cLab(b.c), sub: b.c.replaceAll('-', '.'), v: b.p, tip: `${cLab(b.c)} ${b.c}\n발령 ${b.p}명` })), { h: 170 })}
       ${cohTable}</section>
@@ -1861,7 +1869,7 @@ document.addEventListener('click', e => {
   }
   else if (b.dataset.fc){ S.c = b.dataset.fc; render(); }
   else if (b.dataset.fg){ S.g = b.dataset.fg; S.d = 'all'; S.need = S.erate = undefined; render(); }
-  else if (b.dataset.sy){ SB.y = b.dataset.sy === 'all' ? 'all' : +b.dataset.sy; syncPS(); render(); }
+  else if (b.dataset.sy){ S.tly = null; SB.y = b.dataset.sy === 'all' ? 'all' : +b.dataset.sy; syncPS(); render(); }
   else if (b.dataset.sq){ const q = b.dataset.sq; SB.m = []; SB.q = q === 'all' ? [] : (SB.q.includes(+q) ? SB.q.filter(x => x !== +q) : [...SB.q, +q].sort()); syncPS(); render(); }
   else if (b.dataset.sm){ const m = +b.dataset.sm; SB.q = []; SB.m = SB.m.includes(m) ? SB.m.filter(x => x !== m) : [...SB.m, m].sort((x, y) => x - y); syncPS(); render(); }
   else if (b.dataset.freset){ SB.y = 'all'; SB.q = []; SB.m = []; S.g = 'all'; S.d = 'all'; syncPS(); render(); }
@@ -1888,6 +1896,7 @@ document.addEventListener('click', e => {
     const i = st > 0 ? L.findIndex(x => x.key === s.at(-1).key) + 1 : L.findIndex(x => x.key === s[0].key) - 1;
     if (L[i]){ PS.keys = [L[i].key]; render(); }
   }
+  else if (b.dataset.tly){ S.tly = +b.dataset.tly; render(); }
   else if (b.dataset.compact){ S.compact = !S.compact; render(); }
   else if (b.dataset.tab){ S.tab = b.dataset.tab; render(); }
   else if (b.dataset.sort){ const k = b.dataset.sort; S.sort = { k, dir: S.sort.k === k ? -S.sort.dir : (k === 'd' ? 1 : -1) }; render(); }
