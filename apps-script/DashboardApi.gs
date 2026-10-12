@@ -101,8 +101,10 @@ function buildDashboardData_() {
       const days = end ? Math.round((end.t - start.t) / 864e5) : null;
 
       const dk = c + '|' + d;
-      const dv = dept[dk] || (dept[dk] = [0, 0]);
-      dv[0]++; if (end) dv[1]++;
+      // 사직 집계 기준별 인원: [발령, 사직(오늘까지), 사직(발령 연도 말까지), 사직(입사 1년 이내)]
+      const ye = end && end.s <= c.slice(0, 4) + '-12-31', y1 = end && days <= 365;
+      const dv = dept[dk] || (dept[dk] = [0, 0, 0, 0]);
+      dv[0]++; if (end) dv[1]++; if (ye) dv[2]++; if (y1) dv[3]++;
 
       const base = c + '|' + g + '|';
       facet(gender, base + ({ '남자': '남', '남': '남', '여자': '여', '여': '여' }[String(r[C.gender] || '').trim()] || '미기재'), days);
@@ -110,8 +112,8 @@ function buildDashboardData_() {
       facet(rank, base + rankBand_(C.rank >= 0 ? r[C.rank] : ''), days);
       facet(track, base + (DASH.TRACKS[d] || '미분류'), days);
       if ({ '남자': 1, '남': 1 }[String(r[C.gender] || '').trim()]) {
-        const mv = maleDept[dk] || (maleDept[dk] = [0, 0]);
-        mv[0]++; if (end) mv[1]++;
+        const mv = maleDept[dk] || (maleDept[dk] = [0, 0, 0, 0]);
+        mv[0]++; if (end) mv[1]++; if (ye) mv[2]++; if (y1) mv[3]++;
       }
 
       if (end) {
@@ -138,12 +140,12 @@ function buildDashboardData_() {
     generatedAt: fmt(new Date()),
     lastUpdate: lastUpdate ? fmt(lastUpdate) : null,
     groups: groups,
-    dept: dept,
+    dept: dept,            // 발령일|부서 → [발령인원, 사직(오늘까지), 사직(발령 연도 말까지), 사직(입사 1년 이내)]
     gender: gender,
     ai: ai,
     rank: rank,
     track: track,          // 발령일|부서군|계열 → [발령인원, 사직자별 근속일]
-    maleDept: maleDept,    // 발령일|부서 → [남성 발령인원, 남성 사직인원] (누적)
+    maleDept: maleDept,    // 발령일|부서 → [남성 발령인원, 남성 사직(오늘까지), (연도 말까지), (1년 이내)]
     // [발령일, 부서구분, 사직발생기간, 사직사유, 사직 경과월(1=1개월 이내), 근속일, 인원]
     res: Object.keys(res).map(k => {
       const p = k.split('\u0001');
