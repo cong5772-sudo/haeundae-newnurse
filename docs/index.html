@@ -807,8 +807,24 @@ const TODAY = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
 // 아래 값은 API 응답을 받은 뒤 setData()에서 채운다
 let A = null, PREV = {}, PREVSHEET = {}, GROUPS = [], GNAMES = [], DPOS = {}, COH = [], YEARS = [], YLATEST, DAY0, Y0, Y1, Y2, YINIT = false;
 const grpOf = d => DPOS[d]?.[2] ?? '기타';
+// 사직 집계 기준 (왼쪽 '사직 집계 기준'): ye = 발령 연도 말(12/31)까지, y1 = 입사 후 1년(365일) 이내, now = 오늘까지
+const RBL = { ye: '연도 말까지', y1: '입사 1년 이내', now: '오늘까지' };
+let RAW = null;
+function rbKeep(c, d){
+  if (SB.rb === 'y1') return d <= 365;
+  if (SB.rb === 'ye') return addDays(c, d) <= new Date(c.slice(0, 4) + '-12-31T00:00:00');
+  return true;
+}
+// 원본 데이터에 사직 집계 기준을 적용한 사본 (화면의 모든 사직 인원·사직율이 이 기준을 따른다)
+function basisView(d){
+  const ix = { now: 1, ye: 2, y1: 3 }[SB.rb] || 1;
+  const pick = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, [v[0], v.length > 3 ? v[ix] : v[1]]]));
+  const fac = o => Object.fromEntries(Object.entries(o || {}).map(([k, [p, ds]]) => { const c = k.split('|')[0]; return [k, [p, ds.filter(x => rbKeep(c, x))]]; }));
+  return Object.assign({}, d, { dept: pick(d.dept), maleDept: pick(d.maleDept), gender: fac(d.gender), ai: fac(d.ai), rank: fac(d.rank), track: fac(d.track),
+    res: (d.res || []).filter(r => rbKeep(r[0], r[5])) });
+}
 function setData(data){
-  A = data;
+  RAW = data; A = basisView(data);
   GROUPS = data.groups; GNAMES = GROUPS.map(g => g[0]);
   DPOS = {}; GROUPS.forEach(([g, ds], gi) => ds.forEach((d, i) => DPOS[d] = [gi, i, g]));
   COH = [...new Set(Object.keys(A.dept).map(k => k.split('|')[0]))].sort();
@@ -841,7 +857,7 @@ const cLab = c => (YEARS.length > 1 && SB.y === 'all' ? c.slice(2, 4) + '년 ' :
 const cShort = c => c.slice(5).replace('-', '.');
 const S = { c:'all', g:'all', d:'all', page:'p1', tab:'hr', sort:{k:'tot',dir:-1}, q:'' };
 // 사이드바 기간 선택: 연도 / 분기(여러 개) / 월(여러 개) → 아래 syncPS()가 PS(기간 상태)로 옮긴다
-const SB = { y:'all', q:[], m:[] };
+const SB = { y:'all', q:[], m:[], rb:'ye' };
 
 const pct = (x, d=1) => isFinite(x) ? (x*100).toFixed(d) + '%' : '–';
 // 발령현황·부서별 사직은 발령일이 선택 기간에 들어가는 회차만, 사직분석은 선택한 발령 연도의 모든 회차(연도 '전체'면 전 회차)
@@ -1047,7 +1063,7 @@ function p1(){
   <div class="kpis">
     ${kpi(Y0 + '년 발령인원', kt.p, '명', cmp([[Y1 + '년', (pa(Y1).placed ?? '–') + '명'], [Y2 + '년', (pa(Y2).placed ?? '–') + '명']]))}
     ${kpi(Y0 + '년 발령 회차', kc.length, '회', klatest ? `최근 ${klatest.replaceAll('-', '.')} (${COH.filter(x => x.startsWith(Y0 + '-')).indexOf(klatest) + 1}차)` : '–')}
-    ${kpi('현재 재직인원', kt.p - kt.r, '명', `${Y0}년 발령 중 사직 ${kt.r}명 제외`)}
+    ${kpi(SB.rb === 'now' ? '현재 재직인원' : `재직인원 <small>(${RBL[SB.rb]})</small>`, kt.p - kt.r, '명', `${Y0}년 발령 중 사직 ${kt.r}명 제외`)}
     ${kpi(Y0 + '년 사직율', pct(kt.r / kt.p), '', cmp([[Y1 + '년', pct(pa(Y1).rate)], [Y2 + '년', pct(pa(Y2).rate)]]))}
   </div>
   ${yoy()}
@@ -1634,6 +1650,8 @@ function filters(){
   }
   box.innerHTML = `
     <div class="fs"><span class="fl">기준일시</span><div class="cg">${chip('data-sy', 'all', '전체', SB.y === 'all')}${years.map(y => chip('data-sy', y, `${y}년`, SB.y === y)).join('')}</div></div>
+    <div class="fs"><span class="fl">사직 집계 기준</span><div class="cg">${Object.entries(RBL).map(([k, l]) => chip('data-rb', k, l, SB.rb === k)).join('')}</div>
+      <p class="fhint">${{ ye: '발령 연도의 12월 31일까지 사직한 인원 (연말 확정 기준)', y1: '입사 후 365일 안에 사직한 인원', now: '오늘까지 사직한 모든 인원' }[SB.rb]}</p></div>
     <div class="fs"><span class="fl">분기</span><div class="cg">${chip('data-sq', 'all', '전체', !SB.q.length)}${[0, 1, 2, 3].map(q => chip('data-sq', q, `${q + 1}분기`, SB.q.includes(q), !okQ.has(`quarter-${Y}-${q * 3}`))).join('')}</div></div>
     <div class="fs"><span class="fl">월</span><div class="cg mg">${Array.from({ length: 12 }, (_, m) => chip('data-sm', m, `${m + 1}월`, SB.m.includes(m), !okM.has(`month-${Y}-${m}`))).join('')}</div></div>
     <div class="fs"><label class="fl" for="sel-g">부서</label><select id="sel-g"><option value="all">전체 부서</option>${GNAMES.map(g => `<option value="${g}" ${S.g === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
@@ -1641,7 +1659,7 @@ function filters(){
     <p class="fhint">${S.page === 'p2' ? '기간은 <b>사직일</b> 기준입니다.' : '기간은 <b>발령일</b> 기준입니다.'}${(SB.q.length || SB.m.length) && SB.y === 'all' ? ` 분기·월은 ${Y}년 기준입니다.` : ''}</p>
     <button class="freset" data-freset="1">조건 초기화</button>`;
   const pr = curPeriod();
-  const sum = [PS.mode === 'now' ? '전체 기간' : pr.multi ? pr.label : pr.label, S.d !== 'all' ? S.d : S.g !== 'all' ? S.g : '전체 부서'].join(' · ');
+  const sum = [PS.mode === 'now' ? '전체 기간' : pr.multi ? pr.label : pr.label, S.d !== 'all' ? S.d : S.g !== 'all' ? S.g : '전체 부서', '사직 ' + RBL[SB.rb]].join(' · ');
   const fs = document.getElementById('f-sum'); if (fs) fs.textContent = sum;
 }
 function calc(){
@@ -1876,7 +1894,8 @@ document.addEventListener('click', e => {
   else if (b.dataset.sy){ S.tly = null; SB.y = b.dataset.sy === 'all' ? 'all' : +b.dataset.sy; syncPS(); render(); }
   else if (b.dataset.sq){ const q = b.dataset.sq; SB.m = []; SB.q = q === 'all' ? [] : (SB.q.includes(+q) ? SB.q.filter(x => x !== +q) : [...SB.q, +q].sort()); syncPS(); render(); }
   else if (b.dataset.sm){ const m = +b.dataset.sm; SB.q = []; SB.m = SB.m.includes(m) ? SB.m.filter(x => x !== m) : [...SB.m, m].sort((x, y) => x - y); syncPS(); render(); }
-  else if (b.dataset.freset){ SB.y = 'all'; SB.q = []; SB.m = []; S.g = 'all'; S.d = 'all'; syncPS(); render(); }
+  else if (b.dataset.rb){ SB.rb = b.dataset.rb; A = basisView(RAW); render(); }
+  else if (b.dataset.freset){ SB.rb = 'ye'; A = basisView(RAW); SB.y = 'all'; SB.q = []; SB.m = []; S.g = 'all'; S.d = 'all'; syncPS(); render(); }
   else if (b.dataset.print){
     S.printing = true; render();
     document.body.classList.add('printing');
