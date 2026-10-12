@@ -938,7 +938,8 @@ function survival(el){
   const res = resF();
   const series = COH.filter(inC).map(c => {
     const n = byCohort().find(x => x.c === c).p;
-    const el_m = Math.floor(days(new Date(c + 'T00:00:00'), TODAY) / 30.44);
+    const endD = SB.rb === 'ye' ? new Date(Math.min(TODAY, new Date(c.slice(0, 4) + '-12-31T00:00:00'))) : TODAY; // 연도 말 기준이면 그 해 12/31까지만
+    const el_m = Math.floor(days(new Date(c + 'T00:00:00'), endD) / 30.44);
     const pts = [];
     for (let m = 0; m <= el_m; m++){
       const gone = res.filter(r => r[0] === c && r[4] <= m).reduce((s, r) => s + r[6], 0);
@@ -1155,17 +1156,22 @@ function facetP(obj, pr){
 }
 const resP = pr => resF().filter(r => inPer(addDays(r[0], r[5]), pr));
 
+// 사직 집계 기준 '오늘까지': 연도를 고른 경우 그 해 발령자의 사직을 오늘까지 센다 (기간 끝 = 오늘)
+function rbPer(pr){
+  if (SB.rb !== 'now' || PS.mode !== 'year' || pr.multi || pr.e >= TODAY) return pr;
+  return Object.assign({}, pr, { e: TODAY, ext: true, ivs: [{ s: pr.ivs[0].s, e: TODAY }] });
+}
 function periodBar(pr, list, idx){
   return `<section class="pbar" aria-label="조회 기간">
     <div class="prow">
-      <div class="prange">조회 구간 <b>${pr.multi ? esc(pr.label) : `${fmtD(PS.mode === 'now' ? DAY0 : pr.s)} ~ ${fmtD(pr.e)}`}</b>${pr.open ? ' <span class="tag">진행 중</span>' : ''}</div>
+      <div class="prange">조회 구간 <b>${pr.multi ? esc(pr.label) : `${fmtD(PS.mode === 'now' ? DAY0 : pr.s)} ~ ${fmtD(pr.e)}`}</b>${pr.open ? ' <span class="tag">진행 중</span>' : ''}${pr.ext ? ` <span class="tag">${pr.label} 발령자 · 사직은 오늘까지</span>` : ''}</div>
     </div>
     <span class="pdef">조회 조건의 기간은 <b>사직일</b> 기준으로 적용됩니다 · 기간 사직율 = 기간 중 사직 인원 ÷ 기간 중 재직한 인원 (기간 시작 전 사직자 제외 · 기간 종료일까지 발령자 포함)</span>
   </section>`;
 }
 
 function p2(){
-  const list = periodList(PS.mode), pr = curPeriod(), idx = list.findIndex(x => x.key === pr.key);
+  const list = periodList(PS.mode), pr = rbPer(curPeriod()), idx = list.findIndex(x => x.key === pr.key);
   // 사직율의 분모 이름: 연도·전체 기간이면 발령 인원과 같고, 분기·월이면 '기간 중 재직'(기간 시작 전 사직자 제외)
   const NL = PS.mode === 'now' || PS.mode === 'year' ? '발령' : '기간 중 재직';
   const t = perTotals(pr), rate = t.n ? t.r / t.n : NaN, res = resP(pr);
