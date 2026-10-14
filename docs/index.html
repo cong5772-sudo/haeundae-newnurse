@@ -742,6 +742,20 @@ tfoot td,.gt tfoot td,.gt tfoot td:first-child{background:var(--row-tot);color:v
 .tlyr .chip{height:28px;padding:0 10px;font-size:12px}
 .tlyr .chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
 .ph h2 small.tly{font-size:12.5px;font-weight:600;color:var(--muted)}
+/* 여러 개 고르는 콤보박스 (분기·월·부서·세부부서) */
+.ms{position:relative}
+.ms summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;height:38px;border:1px solid var(--line2);border-radius:10px;padding:0 10px;background:var(--surface);color:var(--ink);font-size:13.5px;cursor:pointer}
+.ms summary::-webkit-details-marker{display:none}
+.ms[open] summary{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in oklab,var(--accent) 15%,transparent)}
+.ms-v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}.ms-v.on{color:var(--accent);font-weight:700}
+.ms-ar{color:var(--muted);font-size:11px;flex:none}
+.ms-pop{margin-top:4px;border:1px solid var(--line2);border-radius:10px;background:var(--surface);padding:4px;max-height:240px;overflow:auto;box-shadow:0 6px 16px rgba(15,23,42,.08)}
+.ms-i{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:13px;cursor:pointer}
+.ms-i:hover{background:var(--sunk)}
+.ms-i.all{font-weight:600;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;margin-bottom:2px}
+.ms-i.dis{color:var(--muted);cursor:default;opacity:.55}
+.ms-i input{width:15px;height:15px;accent-color:var(--accent);margin:0}
+.ms-h{margin:4px 8px 2px;font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -834,7 +848,7 @@ function setData(data){
   // 연도 탭이 2개 이상이면 처음 열 때 가장 최근 연도를 보여준다
   if (!YINIT){ YINIT = true; if (YEARS.length > 1 && SB.y === 'all'){ SB.y = YLATEST; syncPS(); } }
   setYear();
-  if (!GNAMES.includes(S.g)) S.g = 'all';
+  S.gs = S.gs.filter(g => GNAMES.includes(g));
   if (SB.c !== 'all' && !COH.includes(SB.c)) SB.c = 'all';
 }
 // 기준 연도(Y0)와 비교 연도(Y1·Y2): 왼쪽 '발령 연도'에서 연도를 고르면 그 연도, 아니면 가장 최근 연도
@@ -855,7 +869,7 @@ function setYear(){
 const SER = i => ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)'][i % 6];
 const cLab = c => (YEARS.length > 1 && SB.y === 'all' ? c.slice(2, 4) + '년 ' : '') + (COH.filter(x => x.slice(0, 4) === c.slice(0, 4)).indexOf(c) + 1) + '차';
 const cShort = c => c.slice(5).replace('-', '.');
-const S = { c:'all', g:'all', d:'all', page:'p1', tab:'hr', sort:{k:'tot',dir:-1}, q:'' };
+const S = { c:'all', gs:[], ds:[], page:'p1', tab:'hr', sort:{k:'tot',dir:-1}, q:'' };
 // 사이드바 기간 선택: 연도 / 분기(여러 개) / 월(여러 개) → 아래 syncPS()가 PS(기간 상태)로 옮긴다
 const SB = { y:'all', q:[], m:[], rb:'ye', c:'all' }; // c: 발령 회차 (발령 연도를 고른 뒤 선택)
 
@@ -864,8 +878,12 @@ const pct = (x, d=1) => isFinite(x) ? (x*100).toFixed(d) + '%' : '–';
 const inC = c => (SB.c === 'all' || c === SB.c) && (S.page === 'p2' ? (SB.y === 'all' || c.startsWith(SB.y + '-')) : (PS.mode === 'now' || inPer(new Date(c + 'T00:00:00'), curPeriod())));
 // 발령 연도 안에서의 회차 번호 (예: 2026-04-01 → 2)
 const cNo = c => COH.filter(x => x.slice(0, 4) === c.slice(0, 4)).indexOf(c) + 1;
-const inD = d => S.d === 'all' || S.d === d;
-const inG = g => S.g === 'all' || S.g === g;
+const inD = d => !S.ds.length || S.ds.includes(d);
+const inG = g => !S.gs.length || S.gs.includes(g);
+// 조회 조건의 부서 표시: 세부부서 > 부서 > 전체
+const scopeLbl = () => S.ds.length ? S.ds.join(', ') : S.gs.length ? S.gs.join(' + ') : '전체 부서';
+// 선택한 부서들에 속한 세부부서 (부서를 고르지 않았으면 전체)
+const depsOf = () => GROUPS.filter(([g]) => !S.gs.length || S.gs.includes(g)).flatMap(([, ds]) => ds);
 const days = (a, b) => Math.round((b - a) / 864e5);
 const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d; };
 const fmtD = d => `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
@@ -982,7 +1000,7 @@ const PAGES = {
   p4: { t:'교육과정 만족도', s:'신규간호사 교육과정 설문 결과를 회차별로 분석합니다.' },
 };
 
-const cmp = items => `<span class="cmp">${items.map(([a, b]) => `<span>${a} <b class="num">${b}</b></span>`).join('')}${S.g !== 'all' || SB.c !== 'all' ? '<span class="zero">전년도는 전체 기준</span>' : ''}</span>`;
+const cmp = items => `<span class="cmp">${items.map(([a, b]) => `<span>${a} <b class="num">${b}</b></span>`).join('')}${S.gs.length || S.ds.length || SB.c !== 'all' ? '<span class="zero">전년도는 전체 기준</span>' : ''}</span>`;
 function kpi(lab, val, unit, sub){ return `<div class="kpi"><span class="lab">${lab}</span><span class="val">${val}${unit ? `<small>${unit}</small>` : ''}</span><span class="sub">${sub||''}</span></div>`; }
 
 // 전년도 비교: 연도별 발령인원을 재직(파랑)·사직(주황)으로 나눈 가로 막대 (전체 기준)
@@ -1060,7 +1078,7 @@ function p1(){
     <tbody>${body || `<tr><td colspan="${sel.length + 2}" class="zero">'${esc(S.q)}'에 해당하는 부서가 없습니다.</td></tr>`}</tbody>
     ${all.length ? `<tfoot><tr><td>전체 합계 <span style="font-weight:400;color:var(--muted)">${all.length}개 부서</span></td>${sel.map(c => `<td class="num">${sumRow(all, c)}명</td>`).join('')}<td class="num">${sel.reduce((s, c) => s + sumRow(all, c), 0)}명</td></tr></tfoot>` : ''}</table></div>`;
 
-  const tbar = `<div class="tbar"><div class="seg" role="group" aria-label="표 부서 구분">${[['all', '전체'], ...GNAMES.map(g => [g, g])].map(([v, l]) => `<button class="chip" data-fg="${v}" id="tg-${v}" aria-pressed="${S.g === v}">${l}</button>`).join('')}</div>
+  const tbar = `<div class="tbar"><div class="seg" role="group" aria-label="표 부서 구분">${[['all', '전체'], ...GNAMES.map(g => [g, g])].map(([v, l]) => `<button class="chip" data-fg="${v}" id="tg-${v}" aria-pressed="${v === 'all' ? !S.gs.length : S.gs.includes(v)}">${l}</button>`).join('')}</div>
     <button class="chip ghost" data-compact="1" id="t-compact" aria-pressed="${!!S.compact}">${S.compact ? '부서별 펼치기' : '소계만 보기'}</button></div>`;
   return `<div style="display:grid;gap:20px">
   <div class="kpis">
@@ -1375,7 +1393,7 @@ function p3(){
       <span class="rk ${hi ? 'h' : 'l'}">${i + 1}</span><b class="rd2">${d.d}</b><span class="tag">${d.g}</span>
       <span class="rbar"><i style="width:${Math.max(d.rate / rkMax * 100, 1)}%;background:${hi ? 'var(--crit)' : 'var(--good)'}"></i></span>
       <b class="num rv2">${pct(d.rate)}</b><small class="num">${d.r}/${d.p}명</small></li>`;
-  const scopeTxt = `${PS.mode === 'now' ? '전체 기간' : curPeriod().label} · ${S.d !== 'all' ? S.d : S.g !== 'all' ? S.g : '전체 부서'}`;
+  const scopeTxt = `${PS.mode === 'now' ? '전체 기간' : curPeriod().label} · ${scopeLbl()}`;
   const rankPanel = pool.length >= 2 ? `<section class="panel w12 rank"><div class="ph"><div><h2>부서별 사직율 순위</h2><p>${scopeTxt} · 발령 3명 이상 부서 ${pool.length}곳 · 같은 사직율이면 높은 순위는 사직 인원이 많은 순, 낮은 순위는 발령 인원이 많은 순</p></div></div>
     <div class="rk2">
       <div class="rkc"><h3><span class="dotc" style="background:var(--crit)"></span>사직율 높은 부서 TOP ${hiR.length}</h3><ol>${hiR.map((d, i) => rkRow(d, i, true)).join('')}</ol></div>
@@ -1383,7 +1401,7 @@ function p3(){
     </div></section>` : '';
   const col = { crit:'var(--crit)', warn:'var(--warn)', good:'var(--good)', none:'var(--line2)' };
   const groups = GROUPS.filter(([g]) => inG(g)).map(([g, list]) => ({ g, rows: list.map(d => by[d]).filter(Boolean) })).filter(x => x.rows.length);
-  const whole = S.g === 'all' && SB.c === 'all';
+  const whole = !S.gs.length && !S.ds.length && SB.c === 'all';
   const rateTxt = v => v == null ? '<span class="zero">–</span>' : `<span class="${v >= .3 ? 'hot' : ''}">${pct(v)}</span>`;
   const delta = (now, before) => {
     if (before == null || !isFinite(now)) return '';
@@ -1644,13 +1662,23 @@ function syncPS(){
   else if (SB.y !== 'all'){ PS.mode = 'year'; PS.keys = [`year-${SB.y}-0`]; }
   else { PS.mode = 'now'; PS.keys = []; }
 }
+// 여러 개 고르는 콤보박스: 접힌 상태에선 선택 요약, 펼치면 체크 목록 (빈 선택 = 전체)
+function msel(k, label, allLbl, items, sel){
+  const on = v => sel.includes(v), n = sel.length;
+  const names = items.filter(([v]) => on(v)).map(([, l]) => l);
+  const sum = !n ? allLbl : names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} 외 ${names.length - 2}개`;
+  return `<div class="fs"><span class="fl">${label}</span><details class="ms" data-ms="${k}" ${S.openDD === k ? 'open' : ''}>
+    <summary><span class="ms-v${n ? ' on' : ''}">${esc(sum)}</span><span class="ms-ar" aria-hidden="true">▾</span></summary>
+    <div class="ms-pop"><label class="ms-i all"><input type="checkbox" data-msk="${k}" value="__all" ${!n ? 'checked' : ''}> 전체</label>
+      ${items.map(([v, l, dis]) => `<label class="ms-i${dis ? ' dis' : ''}"><input type="checkbox" data-msk="${k}" value="${esc(String(v))}" ${on(v) ? 'checked' : ''} ${dis ? 'disabled' : ''}> ${esc(l)}</label>`).join('')}
+      <p class="ms-h">여러 개를 고를 수 있습니다</p></div></details></div>`;
+}
 function filters(){
   const box = document.getElementById('f-side'); if (!box) return;
   const years = [...new Set(COH.map(c => +c.slice(0, 4)).concat([TODAY.getFullYear()]))].sort();
   const Y = SB.y === 'all' ? TODAY.getFullYear() : SB.y;
   const okQ = new Set(periodList('quarter').map(x => x.key)), okM = new Set(periodList('month').map(x => x.key));
   const chip = (attr, val, label, on, dis) => `<button class="chip" ${attr}="${val}" aria-pressed="${on}" ${dis ? 'disabled' : ''}>${label}</button>`;
-  const deps = S.g === 'all' ? [] : (GROUPS.find(g => g[0] === S.g)?.[1] || []);
   if (S.page === 'p4'){
     const svYears = [...new Set(((A.survey && A.survey.cohorts) || []).map(c => +c.date.slice(0, 4)).concat(years))].sort();
     box.innerHTML = `<div class="fs"><span class="fl">발령 연도</span><div class="cg">${chip('data-sy', 'all', '전체', SB.y === 'all')}${svYears.map(y => chip('data-sy', y, `${y}년`, SB.y === y)).join('')}</div></div>
@@ -1663,14 +1691,14 @@ function filters(){
     <div class="fs"><label class="fl" for="sel-c">발령 회차</label><select id="sel-c" ${SB.y === 'all' ? 'disabled' : ''}>${SB.y === 'all' ? '<option value="all">발령 연도를 먼저 선택</option>' : `<option value="all">전체 회차 (${SB.y}년)</option>${COH.filter(c => c.startsWith(SB.y + '-')).map(c => `<option value="${c}" ${SB.c === c ? 'selected' : ''}>${cNo(c)}차 (${c.replaceAll('-', '.')})</option>`).join('')}`}</select></div>
     <div class="fs"><span class="fl">사직 집계 기준</span><div class="cg">${Object.entries(RBL).map(([k, l]) => chip('data-rb', k, l, SB.rb === k)).join('')}</div>
       <p class="fhint">${{ ye: '발령 연도의 12월 31일까지 사직한 인원 (연말 확정 기준)', now: '오늘까지 사직한 모든 인원' }[SB.rb]}</p></div>
-    <div class="fs"><span class="fl">분기</span><div class="cg">${chip('data-sq', 'all', '전체', !SB.q.length)}${[0, 1, 2, 3].map(q => chip('data-sq', q, `${q + 1}분기`, SB.q.includes(q), !okQ.has(`quarter-${Y}-${q * 3}`))).join('')}</div></div>
-    <div class="fs"><span class="fl">월</span><div class="cg mg">${Array.from({ length: 12 }, (_, m) => chip('data-sm', m, `${m + 1}월`, SB.m.includes(m), !okM.has(`month-${Y}-${m}`))).join('')}</div></div>
-    <div class="fs"><label class="fl" for="sel-g">부서</label><select id="sel-g"><option value="all">전체 부서</option>${GNAMES.map(g => `<option value="${g}" ${S.g === g ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
-    <div class="fs"><label class="fl" for="sel-d">세부부서</label><select id="sel-d" ${S.g === 'all' ? 'disabled' : ''}>${S.g === 'all' ? '<option value="all">부서를 먼저 선택</option>' : `<option value="all">전체 (${S.g})</option>${deps.map(d => `<option value="${d}" ${S.d === d ? 'selected' : ''}>${d}</option>`).join('')}`}</select></div>
+    ${msel('q', '분기', '전체 분기', [0, 1, 2, 3].map(q => [q, `${q + 1}분기`, !okQ.has(`quarter-${Y}-${q * 3}`)]), SB.q)}
+    ${msel('m', '월', '전체 월', Array.from({ length: 12 }, (_, m) => [m, `${m + 1}월`, !okM.has(`month-${Y}-${m}`)]), SB.m)}
+    ${msel('g', '부서', '전체 부서', GNAMES.map(g => [g, g]), S.gs)}
+    ${msel('d', '세부부서', S.gs.length ? `전체 (${S.gs.join(' + ')})` : '전체 세부부서', depsOf().map(d => [d, d]), S.ds)}
     <p class="fhint">${S.page === 'p2' ? '기간은 <b>사직일</b> 기준입니다.' : '기간은 <b>발령일</b> 기준입니다.'}${(SB.q.length || SB.m.length) && SB.y === 'all' ? ` 분기·월은 ${Y}년 기준입니다.` : ''}</p>
     <button class="freset" data-freset="1">조건 초기화</button>`;
   const pr = curPeriod();
-  const sum = [PS.mode === 'now' ? '전체 기간' : pr.multi ? pr.label : pr.label, ...(SB.c !== 'all' ? [cNo(SB.c) + '차 발령'] : []), S.d !== 'all' ? S.d : S.g !== 'all' ? S.g : '전체 부서', '사직 ' + RBL[SB.rb]].join(' · ');
+  const sum = [PS.mode === 'now' ? '전체 기간' : pr.multi ? pr.label : pr.label, ...(SB.c !== 'all' ? [cNo(SB.c) + '차 발령'] : []), scopeLbl(), '사직 ' + RBL[SB.rb]].join(' · ');
   const fs = document.getElementById('f-sum'); if (fs) fs.textContent = sum;
 }
 function calc(){
@@ -1693,13 +1721,14 @@ function render(){
   decoPanels(v);
 }
 function viewHTML(){
-  if (S.page === 'p2' && S.d !== 'all'){
+  if (S.page === 'p2' && S.ds.length){
     // 사직 시점·사유는 개인 식별을 막기 위해 부서군 단위로만 제공되므로, 세부부서 선택 시 소속 부서군 기준으로 보여준다
-    const keep = S.d; let p = 0, r = 0;
-    for (const [k, [pp, rr]] of Object.entries(A.dept)){ const [c, d] = k.split('|'); if (d === keep){ p += pp; r += rr; } }
-    S.d = 'all';
-    const h = `<div class="note dnote"><b>${keep}</b> 자체 누적: 발령 ${p}명 · 사직 ${r}명 · 사직율 ${pct(p ? r / p : NaN)}<br>사직 시점·사유 분석은 개인이 드러나지 않도록 소속 부서군(<b>${S.g}</b>) 기준으로 표시합니다.</div>` + p2();
-    S.d = keep;
+    const keepD = S.ds, keepG = S.gs; let p = 0, r = 0;
+    for (const [k, [pp, rr]] of Object.entries(A.dept)){ const [c, d] = k.split('|'); if (keepD.includes(d) && inC(c)){ p += pp; r += rr; } }
+    S.gs = [...new Set(keepD.map(grpOf))]; S.ds = [];
+    let h;
+    try { h = `<div class="note dnote"><b>${esc(keepD.join(', '))}</b> 합계: 발령 ${p}명 · 사직 ${r}명 · 사직율 ${pct(p ? r / p : NaN)}<br>사직 시점·사유 분석은 개인이 드러나지 않도록 소속 부서군(<b>${esc(S.gs.join(' + '))}</b>) 기준으로 표시합니다.</div>` + p2(); }
+    finally { S.ds = keepD; S.gs = keepG; }
     return h;
   }
   return ({ p1, p2, p3, p4 })[S.page]();
@@ -1901,12 +1930,12 @@ document.addEventListener('click', e => {
     setTimeout(() => { window.print(); document.title = prevTitle; }, 50);
   }
   else if (b.dataset.fc){ SB.c = b.dataset.fc; render(); }
-  else if (b.dataset.fg){ S.g = b.dataset.fg; S.d = 'all'; S.need = S.erate = undefined; render(); }
+  else if (b.dataset.fg){ const g = b.dataset.fg; S.gs = g === 'all' ? [] : S.gs.includes(g) ? S.gs.filter(x => x !== g) : [...S.gs, g]; S.ds = S.ds.filter(d => depsOf().includes(d)); S.need = S.erate = undefined; render(); }
   else if (b.dataset.sy){ S.tly = null; SB.c = 'all'; SB.y = b.dataset.sy === 'all' ? 'all' : +b.dataset.sy; syncPS(); render(); }
   else if (b.dataset.sq){ const q = b.dataset.sq; SB.m = []; SB.q = q === 'all' ? [] : (SB.q.includes(+q) ? SB.q.filter(x => x !== +q) : [...SB.q, +q].sort()); syncPS(); render(); }
   else if (b.dataset.sm){ const m = +b.dataset.sm; SB.q = []; SB.m = SB.m.includes(m) ? SB.m.filter(x => x !== m) : [...SB.m, m].sort((x, y) => x - y); syncPS(); render(); }
   else if (b.dataset.rb){ SB.rb = b.dataset.rb; A = basisView(RAW); render(); }
-  else if (b.dataset.freset){ SB.rb = 'ye'; SB.c = 'all'; A = basisView(RAW); SB.y = 'all'; SB.q = []; SB.m = []; S.g = 'all'; S.d = 'all'; syncPS(); render(); }
+  else if (b.dataset.freset){ SB.rb = 'ye'; SB.c = 'all'; A = basisView(RAW); SB.y = 'all'; SB.q = []; SB.m = []; S.gs = []; S.ds = []; S.openDD = null; syncPS(); render(); }
   else if (b.dataset.print){
     S.printing = true; render();
     document.body.classList.add('printing');
@@ -1936,10 +1965,24 @@ document.addEventListener('click', e => {
   else if (b.dataset.sort){ const k = b.dataset.sort; S.sort = { k, dir: S.sort.k === k ? -S.sort.dir : (k === 'd' ? 1 : -1) }; render(); }
 });
 addEventListener('afterprint', () => { document.body.classList.remove('printing', 'svprint'); if (S.printing){ S.printing = false; render(); } });
+document.addEventListener('toggle', e => {
+  const t = e.target; if (!t.matches || !t.matches('details.ms')) return;
+  if (t.open){ S.openDD = t.dataset.ms; document.querySelectorAll('details.ms[open]').forEach(x => { if (x !== t) x.open = false; }); }
+  else if (S.openDD === t.dataset.ms) S.openDD = null;
+}, true);
+document.addEventListener('click', e => { if (!e.target.closest('details.ms')) document.querySelectorAll('details.ms[open]').forEach(x => { x.open = false; }); });
 document.addEventListener('change', e => {
-  if (e.target.id === 'sel-g'){ S.g = e.target.value; S.d = 'all'; render(); }
   if (e.target.id === 'sel-c'){ SB.c = e.target.value; render(); }
-  if (e.target.id === 'sel-d'){ S.d = e.target.value; render(); }
+  const mk = e.target.dataset?.msk;
+  if (mk){
+    const raw = e.target.value, all = raw === '__all', on = e.target.checked;
+    const tog = (arr, v) => all ? [] : on ? [...new Set([...arr, v])] : arr.filter(x => x !== v);
+    if (mk === 'q'){ SB.m = []; SB.q = tog(SB.q, +raw).sort(); syncPS(); }
+    else if (mk === 'm'){ SB.q = []; SB.m = tog(SB.m, +raw).sort((x, y) => x - y); syncPS(); }
+    else if (mk === 'g'){ S.gs = tog(S.gs, raw); S.ds = S.ds.filter(d => depsOf().includes(d)); S.need = S.erate = undefined; }
+    else if (mk === 'd'){ S.ds = tog(S.ds, raw); }
+    S.openDD = mk; render();
+  }
 });
 if (typeof matchMedia === 'function' && matchMedia('(max-width: 820px)').matches){ const fc = document.getElementById('fcard'); if (fc) fc.open = false; }
 document.addEventListener('input', e => {
