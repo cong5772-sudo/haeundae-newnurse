@@ -756,6 +756,27 @@ tfoot td,.gt tfoot td,.gt tfoot td:first-child{background:var(--row-tot);color:v
 .ms-i.dis{color:var(--muted);cursor:default;opacity:.55}
 .ms-i input{width:15px;height:15px;accent-color:var(--accent);margin:0}
 .ms-h{margin:4px 8px 2px;font-size:11px;color:var(--muted)}
+/* 표 머리 정렬·필터 */
+th .tfb{all:unset;cursor:pointer;margin-left:4px;padding:0 4px;border-radius:4px;font-size:10px;color:var(--muted);line-height:1.4}
+th .tfb:hover{background:color-mix(in oklab,var(--accent) 12%,transparent);color:var(--accent)}
+th.tf-on{color:var(--accent)!important}th.tf-on .tfb{color:var(--accent);font-weight:700}
+.tfpop{position:absolute;z-index:60;width:240px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 10px 28px rgba(15,23,42,.18);padding:6px;font-size:13px;color:var(--ink)}
+.tfh{font-size:12px;font-weight:700;color:var(--ink2);padding:2px 6px 6px}
+.tfi{all:unset;display:block;width:100%;box-sizing:border-box;padding:7px 10px;border-radius:6px;cursor:pointer}
+.tfi:hover{background:var(--accent-soft);color:var(--accent)}
+.tfsep{height:1px;background:var(--line);margin:6px 0}
+.tfq{width:100%;box-sizing:border-box;height:30px;border:1px solid var(--line2);border-radius:7px;padding:0 8px;font:12.5px var(--f-ui);margin-bottom:4px;background:var(--surface);color:var(--ink)}
+.tfa{display:block;padding:4px 6px;font-weight:600;border-bottom:1px solid var(--line)}
+.tfl{max-height:220px;overflow:auto;padding:4px 0}
+.tfl label{display:block;padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.tfl label:hover{background:var(--sunk)}
+.tfpop input[type=checkbox]{width:14px;height:14px;margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--accent)}
+.tff{display:flex;gap:6px;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--line);margin-top:4px}
+.tfbtn{height:30px;padding:0 12px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font:600 12.5px var(--f-ui);cursor:pointer}
+.tfbtn.ghost{background:var(--surface);color:var(--ink2);border-color:var(--line2)}
+.tf-note{padding:6px 10px;font-size:12px;color:var(--accent);background:var(--accent-soft);border-top:1px solid var(--line)}
+.tf-note button{all:unset;cursor:pointer;margin-left:8px;text-decoration:underline;color:var(--ink2)}
+@media print{th .tfb,.tf-note,.tfpop{display:none!important}}
 </style>
 </head>
 <body>
@@ -1735,6 +1756,7 @@ function render(){
   const sv = document.getElementById('surv'); if (sv) survival(sv);
   calc();
   decoPanels(v);
+  tfEnhance(v);
 }
 function viewHTML(){
   if (S.page === 'p2' && S.ds.length){
@@ -1764,6 +1786,126 @@ function decoPanels(root){
     if (ph) ph.appendChild(t); else { t.classList.add('fl'); el.prepend(t); }
   });
 }
+/* ---------- 표 머리 정렬·필터 (엑셀처럼): 행이 단순한 표에 자동 적용 ---------- */
+S.tf = {}; // 표별 상태 { key: { sort: { i, dir }, f: { 열번호: [보일 값...] } } }
+const tfTxt = c => c.innerText.replace(/\s+/g, ' ').trim();
+const tfNum = t => { const m = String(t).replace(/,/g, '').match(/-?\d+(\.\d+)?/); return m && !/^[–-]$/.test(t) ? +m[0] * (/^[−▼]/.test(t) ? -1 : 1) : NaN; };
+// 머리의 마지막 단계 칸(열 하나짜리)마다 실제 열 번호를 찾는다 (두 줄 머리·칸 합치기 대응)
+function tfCols(tb){
+  const h = tb.tHead; if (!h) return [];
+  const R = h.rows.length, grid = [], out = [];
+  [...h.rows].forEach((row, ri) => {
+    let ci = 0;
+    [...row.cells].forEach(c => {
+      while (grid[ri]?.[ci]) ci++;
+      for (let dr = 0; dr < c.rowSpan; dr++) for (let dc = 0; dc < c.colSpan; dc++) (grid[ri + dr] ??= [])[ci + dc] = 1;
+      if (c.colSpan === 1 && ri + c.rowSpan === R) out.push([c, ci]);
+      ci += c.colSpan;
+    });
+  });
+  return out;
+}
+// 정렬·필터 대상 행: 그룹 구분·소계·요약 줄과 칸을 합친 줄은 제외 (그 줄들은 제자리에 둔다)
+const tfData = r => !r.matches('.gh,.sub,.qsum') && ![...r.cells].some(c => c.colSpan > 1);
+function tfOk(tb){
+  const body = tb.tBodies[0]; if (!body || !tfCols(tb).length) return false;
+  return [...body.rows].filter(tfData).length > 1;
+}
+function tfEnhance(root){
+  const seen = {};
+  root.querySelectorAll('table').forEach(tb => {
+    if (!tfOk(tb)) return;
+    const title = tb.closest('section')?.querySelector('h2')?.textContent.trim() || 'tbl';
+    const key = S.page + '|' + title + '|' + (seen[title] = (seen[title] || 0) + 1);
+    tb.dataset.tf = key;
+    [...tb.tBodies[0].rows].forEach((r, i) => { r.dataset.o = i; });
+    tfCols(tb).forEach(([th, i]) => {
+      if (th.querySelector('.tfb')) return;
+      const b = document.createElement('button'); b.className = 'tfb'; b.type = 'button'; b.dataset.tfi = i; b.title = '정렬 · 필터'; b.textContent = '▾';
+      th.appendChild(b);
+    });
+    tfApply(tb);
+  });
+}
+function tfApply(tb){
+  const st = S.tf[tb.dataset.tf] || {}, body = tb.tBodies[0];
+  const all = [...body.rows].sort((a, b) => +a.dataset.o - +b.dataset.o);
+  // 그룹 구분 줄(gh)을 경계로 나눠 각 그룹 안에서만 정렬, 소계·요약 줄은 그룹 끝에 그대로
+  const segs = [[]]; all.forEach(r => { if (r.matches('.gh')) segs.push([r]); else segs.at(-1).push(r); });
+  const cmp = (a, b) => {
+    const { i, dir } = st.sort;
+    const x = tfTxt(a.cells[i] || a), y = tfTxt(b.cells[i] || b), nx = tfNum(x), ny = tfNum(y);
+    if (!isNaN(nx) || !isNaN(ny)){ if (isNaN(nx)) return 1; if (isNaN(ny)) return -1; return (nx - ny) * dir; }
+    return x.localeCompare(y, 'ko') * dir;
+  };
+  let total = 0, shown = 0;
+  segs.forEach(seg => {
+    const head = seg.filter(r => r.matches('.gh')), data = seg.filter(tfData), rest = seg.filter(r => !r.matches('.gh') && !tfData(r));
+    if (st.sort) data.sort(cmp);
+    data.forEach(r => { r.hidden = Object.entries(st.f || {}).some(([i, vals]) => !vals.includes(tfTxt(r.cells[i] || r))); total++; if (!r.hidden) shown++; });
+    const any = !data.length || data.some(r => !r.hidden);
+    head.concat(rest).forEach(r => { r.hidden = !any; });
+    head.concat(data, rest).forEach(r => body.appendChild(r));
+  });
+  tfCols(tb).forEach(([th, i]) => {
+    const on = st.sort?.i === i, fl = !!(st.f && st.f[i]);
+    th.classList.toggle('tf-on', on || fl);
+    const b = th.querySelector('.tfb'); if (b) b.textContent = on ? (st.sort.dir > 0 ? '▲' : '▼') : fl ? '⛃' : '▾';
+  });
+  let n = tb.parentElement.querySelector(':scope > .tf-note');
+  if (shown < total){
+    if (!n){ n = document.createElement('div'); n.className = 'tf-note'; tb.parentElement.appendChild(n); }
+    n.innerHTML = `필터 적용: ${total}행 중 ${shown}행 표시 (소계·합계 줄은 전체 기준) <button type="button" class="tf-clear">필터 해제</button>`;
+  } else if (n) n.remove();
+}
+function tfClose(){ document.getElementById('tfpop')?.remove(); }
+function tfOpen(btn){
+  tfClose();
+  const tb = btn.closest('table'), key = tb.dataset.tf, i = +btn.dataset.tfi, st = S.tf[key] || (S.tf[key] = {});
+  const vals = [...new Set([...tb.tBodies[0].rows].filter(tfData).map(r => tfTxt(r.cells[i] || r)))];
+  const nums = vals.every(v => !isNaN(tfNum(v)) || v === '–' || v === '');
+  vals.sort((a, b) => nums ? (tfNum(a) || 0) - (tfNum(b) || 0) : a.localeCompare(b, 'ko'));
+  const cur = st.f && st.f[i] ? new Set(st.f[i]) : null;
+  const pop = document.createElement('div'); pop.id = 'tfpop'; pop.className = 'tfpop';
+  pop.innerHTML = `<div class="tfh">${esc(tfTxt(btn.parentElement).replace(/[▾▲▼⛃]$/, ''))}</div>
+    <button type="button" class="tfi" data-tfs="1">▲ ${nums ? '작은 값부터' : '가나다순'} 정렬</button>
+    <button type="button" class="tfi" data-tfs="-1">▼ ${nums ? '큰 값부터' : '역순'} 정렬</button>
+    ${st.sort ? '<button type="button" class="tfi" data-tfs="0">원래 순서로</button>' : ''}
+    <div class="tfsep"></div>
+    <input class="tfq" type="search" placeholder="값 검색">
+    <label class="tfa"><input type="checkbox" data-tfall="1" ${!cur ? 'checked' : ''}> (모두 선택)</label>
+    <div class="tfl">${vals.map(v => `<label><input type="checkbox" value="${esc(v)}" ${!cur || cur.has(v) ? 'checked' : ''}> ${esc(v || '(빈칸)')}</label>`).join('')}</div>
+    <div class="tff"><button type="button" class="tfbtn ghost" data-tfreset="1">이 열 초기화</button><button type="button" class="tfbtn" data-tfok="1">적용</button></div>`;
+  document.body.appendChild(pop);
+  const z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--z')) || 1, r = btn.getBoundingClientRect();
+  // 화면 확대(zoom) 상태: 버튼 위치(보이는 좌표)를 문서 좌표로 바꿔 메뉴를 바로 아래에
+  pop.style.left = Math.max(8, Math.min(r.left + scrollX, scrollX + innerWidth - 260 * z)) / z + 'px';
+  pop.style.top = (r.bottom + 4 + scrollY) / z + 'px';
+  const boxes = () => [...pop.querySelectorAll('.tfl input')];
+  pop.addEventListener('input', e => { if (e.target.classList.contains('tfq')){ const q = e.target.value.trim(); pop.querySelectorAll('.tfl label').forEach(l => { l.hidden = q && !l.textContent.includes(q); }); } });
+  pop.addEventListener('change', e => {
+    if (e.target.dataset.tfall) boxes().filter(x => !x.closest('label').hidden).forEach(x => { x.checked = e.target.checked; });
+    else pop.querySelector('[data-tfall]').checked = boxes().every(x => x.checked);
+  });
+  pop.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.tfs != null){ const d = +b.dataset.tfs; st.sort = d ? { i, dir: d } : null; tfClose(); tfApply(tb); }
+    else if (b.dataset.tfreset){ if (st.f) delete st.f[i]; if (st.sort?.i === i) st.sort = null; tfClose(); tfApply(tb); }
+    else if (b.dataset.tfok){
+      const on = boxes().filter(x => x.checked).map(x => x.value);
+      st.f = st.f || {}; if (on.length === vals.length) delete st.f[i]; else st.f[i] = on;
+      tfClose(); tfApply(tb);
+    }
+  });
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.tfb');
+  if (b){ e.stopPropagation(); document.getElementById('tfpop')?.dataset.for === b.dataset.tfi + b.closest('table').dataset.tf ? tfClose() : (tfOpen(b), document.getElementById('tfpop').dataset.for = b.dataset.tfi + b.closest('table').dataset.tf); return; }
+  const c = e.target.closest('.tf-clear');
+  if (c){ const tb = c.parentElement.parentElement.querySelector('table[data-tf]'); if (tb){ S.tf[tb.dataset.tf] = {}; tfApply(tb); } return; }
+  if (!e.target.closest('#tfpop')) tfClose();
+}, true);
+
 // 다른 페이지를 화면 밖에서 그려 항목을 모은다
 function buildPage(pg){
   if (pg === S.page) return document.getElementById('view');
@@ -1783,7 +1925,7 @@ function prHead(title){
 function doPrint(html, opt){
   const box = document.getElementById('printbox');
   box.innerHTML = html;
-  box.querySelectorAll('.ptools,.hbtns,#hbtns').forEach(x => x.remove());
+  box.querySelectorAll('.ptools,.hbtns,#hbtns,.tfb,.tf-note').forEach(x => x.remove());
   box.classList.toggle('brk', !!opt.brk);
   let st = document.getElementById('pgsize');
   if (!st){ st = document.createElement('style'); st.id = 'pgsize'; document.head.appendChild(st); }
@@ -1870,10 +2012,10 @@ function secAoa(el, pgT){
   }
   tabs.forEach(tb => {
     aoa.push([]);
-    [...tb.rows].forEach(r => {
+    [...tb.rows].filter(r => !r.hidden).forEach(r => {
       const row = [];
       [...r.cells].forEach(c => {
-        const txt = c.innerText.replace(/\s*\n\s*/g, ' ').trim();
+        const txt = c.innerText.replace(/\s*\n\s*/g, ' ').trim().replace(/\s*[▾▲▼⛃]$/, ''); // 정렬·필터 버튼 표시 제외
         row.push(/^-?\d+(\.\d+)?$/.test(txt) ? +txt : txt);
         for (let k = 1; k < (c.colSpan || 1); k++) row.push('');
       });
