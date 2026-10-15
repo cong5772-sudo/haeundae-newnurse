@@ -70,7 +70,7 @@ function buildDashboardData_() {
   groups.forEach(g => g[1].forEach(d => { groupOf[d] = g[0]; }));
   const extra = [];
 
-  const dept = {}, gender = {}, ai = {}, rank = {}, track = {}, maleDept = {}, res = {};
+  const dept = {}, gender = {}, ai = {}, rank = {}, track = {}, school = {}, maleDept = {}, res = {};
   let lastUpdate = null;
   const facet = (obj, key, days) => {
     const v = obj[key] || (obj[key] = [0, []]);
@@ -86,7 +86,7 @@ function buildDashboardData_() {
     const col = name => head.indexOf(name);
     const C = {
       dept: col('부서'), date: col('발령일자'), gender: col('성별'), rank: col('석차백분율'),
-      ai: col('AI역량검사평가'), rd: col('사직일'), period: col('사직발생기간'), reason: col('사직사유'), upd: col('업데이트일시'),
+      ai: col('AI역량검사평가'), school: col('출신학교'), rd: col('사직일'), period: col('사직발생기간'), reason: col('사직사유'), upd: col('업데이트일시'),
     };
 
     for (let i = hi + 1; i < rows.length; i++) {
@@ -109,6 +109,7 @@ function buildDashboardData_() {
       const base = c + '|' + g + '|';
       facet(gender, base + ({ '남자': '남', '남': '남', '여자': '여', '여': '여' }[String(r[C.gender] || '').trim()] || '미기재'), days);
       facet(ai, base + (String(C.ai >= 0 ? r[C.ai] : '').trim() || '미기재'), days);
+      facet(school, base + (String(C.school >= 0 ? r[C.school] : '').trim() || '미기재'), days);
       facet(rank, base + rankBand_(C.rank >= 0 ? r[C.rank] : ''), days);
       facet(track, base + (DASH.TRACKS[d] || '미분류'), days);
       if ({ '남자': 1, '남': 1 }[String(r[C.gender] || '').trim()]) {
@@ -130,7 +131,7 @@ function buildDashboardData_() {
     }
   });
   if (extra.length) groups.push(['기타', extra]);
-  [gender, ai, rank, track].forEach(o => Object.keys(o).forEach(k => o[k][1].sort((a, b) => a - b)));
+  [gender, ai, rank, track, school].forEach(o => Object.keys(o).forEach(k => o[k][1].sort((a, b) => a - b)));
 
   const fmt = dt => Utilities.formatDate(dt, DASH.TZ, 'yyyy-MM-dd HH:mm');
   return {
@@ -143,6 +144,7 @@ function buildDashboardData_() {
     dept: dept,            // 발령일|부서 → [발령인원, 사직(오늘까지), 사직(발령 연도 말까지), 사직(입사 1년 이내)]
     gender: gender,
     ai: ai,
+    school: school,        // 발령일|부서군|출신학교 → [발령인원, 사직자별 근속일] (학교별 합계만, 개인 정보 없음)
     rank: rank,
     track: track,          // 발령일|부서군|계열 → [발령인원, 사직자별 근속일]
     maleDept: maleDept,    // 발령일|부서 → [남성 발령인원, 남성 사직(오늘까지), (연도 말까지), (1년 이내)]
