@@ -777,6 +777,25 @@ th.tf-on{color:var(--accent)!important}th.tf-on .tfb{color:var(--accent);font-we
 .tf-note{padding:6px 10px;font-size:12px;color:var(--accent);background:var(--accent-soft);border-top:1px solid var(--line)}
 .tf-note button{all:unset;cursor:pointer;margin-left:8px;text-decoration:underline;color:var(--ink2)}
 @media print{th .tfb,.tf-note,.tfpop{display:none!important}}
+/* 로그인 화면 */
+#login{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:var(--bg);overflow:auto}
+body.locked{overflow:hidden}
+body.locked .app,body.locked .topbar .tb-r .pill,body.locked .refresh{visibility:hidden}
+.lg{width:min(920px,100%);display:grid;gap:22px}
+.lg-head{text-align:center}.lg-head .logo-sq{margin:0 auto}.lg-head h1{margin:12px 0 4px;font-size:24px;font-weight:700;letter-spacing:-.02em}.lg-head p{margin:0;color:var(--ink2);font-size:13px}
+.lg-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.lg-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:12px;align-content:start;box-shadow:0 1px 2px rgba(17,24,39,.04)}
+.lg-box h2{margin:0;font-size:16px;font-weight:700}.lg-box .d{margin:0;font-size:12.5px;color:var(--muted);line-height:1.6}
+.lg-box input{padding:10px 12px;border:1px solid var(--line2);border-radius:10px;font-family:inherit;font-size:14px;background:var(--surface);color:var(--ink)}
+.lg-box form{display:grid;gap:10px}
+.lg-btn{height:40px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:700 14px var(--f-ui);cursor:pointer}.lg-btn:disabled{opacity:.6}
+.lg-err{margin:0;min-height:1.2em;font-size:12.5px;color:var(--crit-ink)}
+.lg-foot{text-align:center;font-size:11.5px;color:var(--muted);margin:0}
+.who{font-size:12.5px;font-weight:600;color:var(--navy)}
+.logout{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink2);font:600 12.5px var(--f-ui);cursor:pointer}
+.logout:hover{border-color:var(--crit);color:var(--crit-ink)}
+@media (max-width:760px){.lg-grid{grid-template-columns:1fr}.lg-head h1{font-size:19px}}
+@media print{#login{display:none!important}}
 </style>
 </head>
 <body>
@@ -788,6 +807,7 @@ th.tf-on{color:var(--accent)!important}th.tf-on .tfb{color:var(--accent);font-we
     <span class="pill"><span class="dot" id="live-dot"></span>기준일 <b class="num" id="today">–</b></span>
     <span class="pill">시트 갱신 <b class="num" id="upd">–</b></span>
     <button class="refresh" id="refresh" data-refresh="1" aria-label="데이터 새로고침" title="데이터 새로고침">↻</button>
+    <span class="who" id="who" hidden></span><button class="logout" id="logout" hidden>로그아웃</button>
   </div>
 </header>
 <div class="app">
@@ -822,6 +842,21 @@ th.tf-on{color:var(--accent)!important}th.tf-on .tfb{color:var(--accent);font-we
     </header>
     <div id="view"></div>
   </main>
+</div>
+<div id="login" hidden>
+  <div class="lg">
+    <div class="lg-head"><span class="logo-sq" aria-hidden="true">+</span><h1>신규간호사 발령 유지관리 대시보드</h1><p>인제대학교 해운대백병원 간호국 · 간호교육팀 — 허용된 관리자만 볼 수 있습니다. 접근 구분을 선택하고 로그인하세요</p></div>
+    <div class="lg-grid">
+      <section class="lg-box"><h2>관리자 (간호교육팀)</h2>
+        <p class="d">간호교육팀에서 정한 <b>관리자 비밀번호</b>로 로그인합니다.</p>
+        <form id="lgf"><input type="password" id="lgpw" placeholder="관리자 비밀번호" autocomplete="current-password"><button class="lg-btn" id="lgok" type="submit">로그인</button></form>
+        <p class="lg-err" id="lgerr"></p></section>
+      <section class="lg-box"><h2>관리자 (간호국 · 간호교육팀 구글 계정)</h2>
+        <p class="d">간호교육팀 <b>부서관리자 명단에 '전체부서접근'으로 등록된 구글 계정</b>만 로그인할 수 있습니다. 등록되지 않은 계정은 로그인해도 볼 수 없습니다.</p>
+        <div id="lgbtn"></div><p class="lg-err" id="lgerr2"></p></section>
+    </div>
+    <p class="lg-foot">처음 로그인할 때는 서버 준비로 10~30초 걸릴 수 있습니다. 로그인은 이 창을 닫을 때까지(최대 12시간) 유지됩니다.</p>
+  </div>
 </div>
 <div id="tip" hidden></div>
 <div id="prwork" aria-hidden="true"></div>
@@ -1668,29 +1703,73 @@ function liveState(kind, note){
   d.dataset.state = kind;
   d.parentElement.title = note || '';
 }
+/* ---------- 로그인 · 데이터 불러오기 (허용된 사람만) ---------- */
+// 데이터는 브라우저에 남기지 않는다 (예전 버전이 저장한 사본도 지움). 로그인 세션만 이 창(탭)에 보관
+try { localStorage.removeItem(CACHE_KEY); } catch (e) {}
+const SESS_KEY = 'nd_sess', GCID = CFG.GOOGLE_CLIENT_ID || '497800427820-0jftci511sots7lcfv2533hnfnnfudpp.apps.googleusercontent.com'; // 예전 config.js가 브라우저에 남아 있어도 동작
+const $id = id => document.getElementById(id);
+async function api(body){
+  const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+function lockUI(on){
+  $id('login').hidden = !on; document.body.classList.toggle('locked', on);
+  if (on){ A = null; RAW = null; $id('view').innerHTML = ''; $id('who').hidden = $id('logout').hidden = true; gisButton(); }
+}
+function signedIn(j){
+  try { if (j.session) sessionStorage.setItem(SESS_KEY, j.session); } catch (e) {}
+  $id('who').textContent = j.me ? j.me.name + (j.me.role === 'google' ? '' : '') : ''; $id('who').hidden = $id('logout').hidden = false;
+  lockUI(false); $id('login').hidden = true;
+  if (j.data.error) throw new Error(j.data.error);
+  setData(j.data); render(); liveState('live', '최신 데이터');
+}
 async function boot(){
   navSync();
-  let cached = null;
-  try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) {}
-  if (cached?.data){ setData(cached.data); render(); liveState('stale', '저장된 데이터를 먼저 표시하고 최신 데이터를 불러오는 중입니다'); }
-  else showMsg('데이터를 불러오는 중입니다', '구글 시트에서 최신 집계를 가져오고 있습니다. 처음 접속할 때는 몇 초 걸릴 수 있습니다.');
-  if (!CFG.API_URL){
-    if (!cached) showMsg('연결 설정이 필요합니다', 'config.js 파일의 API_URL에 Apps Script 웹앱 주소를 입력해 주세요. 자세한 방법은 README.md의 설치 안내를 참고하세요.');
-    liveState('error', 'API_URL 미설정');
-    return;
-  }
+  if (!CFG.API_URL){ showMsg('연결 설정이 필요합니다', 'config.js 파일의 API_URL에 Apps Script 웹앱 주소를 입력해 주세요.'); liveState('error', 'API_URL 미설정'); return; }
+  let sess = null; try { sess = sessionStorage.getItem(SESS_KEY); } catch (e) {}
+  if (!sess){ lockUI(true); return; }
+  if (!A) showMsg('데이터를 불러오는 중입니다', '구글 시트에서 최신 집계를 가져오고 있습니다.');
   try {
-    const res = await fetch(CFG.API_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    setData(data); render(); liveState('live', '최신 데이터');
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), data })); } catch (e) {}
+    const j = await api({ action: 'data', session: sess });
+    if (j.error){ try { sessionStorage.removeItem(SESS_KEY); } catch (e) {} lockUI(true); if (j.error !== 'SESSION_EXPIRED') $id('lgerr2').textContent = j.error === 'NOT_ALLOWED' ? '접근 허용이 해제된 계정입니다.' : j.error; return; }
+    signedIn(j);
   } catch (err) {
-    if (cached?.data){ liveState('error', '최신 데이터를 불러오지 못해 저장본을 표시 중입니다: ' + err.message); }
-    else { showMsg('데이터를 불러오지 못했습니다', `잠시 후 새로고침해 주세요. 계속 안 되면 Apps Script 배포 상태와 config.js의 주소를 확인하세요. (${esc(err.message)})`); liveState('error', err.message); }
+    if (A) liveState('error', '최신 데이터를 불러오지 못했습니다: ' + err.message);
+    else { showMsg('데이터를 불러오지 못했습니다', `잠시 후 새로고침해 주세요. (${esc(err.message)})`); liveState('error', err.message); }
   }
 }
+async function login(body, errEl, btn){
+  errEl.textContent = '확인 중… (처음에는 10~30초 걸릴 수 있습니다)'; if (btn) btn.disabled = true;
+  try {
+    const j = await api(Object.assign({ action: 'login' }, body));
+    if (j.error) throw new Error(j.error);
+    errEl.textContent = ''; signedIn(j);
+  } catch (err) { errEl.textContent = String(err.message || err); }
+  if (btn) btn.disabled = false;
+}
+let GIS_P = null, GIS_INIT = false;
+const loadGIS = () => (window.google && google.accounts && google.accounts.id) ? Promise.resolve() : (GIS_P ||= new Promise((res, rej) => {
+  const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true; sc.onload = res;
+  sc.onerror = () => { GIS_P = null; rej(new Error('구글 로그인 스크립트를 불러오지 못했습니다. 인터넷 연결을 확인하세요.')); }; document.head.appendChild(sc);
+}));
+async function gisButton(){
+  if (!GCID){ $id('lgerr2').textContent = '구글 로그인이 설정되지 않았습니다 (config.js의 GOOGLE_CLIENT_ID).'; return; }
+  try {
+    await loadGIS();
+    if (!GIS_INIT){ google.accounts.id.initialize({ client_id: GCID, callback: r => login({ idToken: r.credential }, $id('lgerr2')), auto_select: false }); GIS_INIT = true; }
+    $id('lgbtn').innerHTML = ''; google.accounts.id.renderButton($id('lgbtn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ko', width: 260 });
+  } catch (e) { $id('lgerr2').textContent = String(e.message || e); }
+}
+$id('lgf').addEventListener('submit', e => {
+  e.preventDefault(); const pw = $id('lgpw').value.trim(); if (!pw) return;
+  $id('lgpw').value = ''; login({ pw }, $id('lgerr'), $id('lgok'));
+});
+$id('logout').addEventListener('click', () => {
+  try { sessionStorage.removeItem(SESS_KEY); } catch (e) {}
+  try { google.accounts.id.disableAutoSelect(); } catch (e) {}
+  lockUI(true);
+});
 
 function syncPS(){
   const Y = SB.y === 'all' ? TODAY.getFullYear() : SB.y;

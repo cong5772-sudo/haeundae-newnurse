@@ -7,6 +7,11 @@
  *
  * 설치: 배포가이드(README.md) 2단계 참고. 새 Apps Script 프로젝트에 이 파일만 넣고
  *       [배포 > 새 배포 > 웹 앱]으로 배포한다 (실행: 나, 액세스: 모든 사용자).
+ *
+ * 접근 관리 (로그인한 사람만 데이터를 받는다)
+ *  - 구글 로그인: '2026년 부서별교육참석명단' 시트의 [부서관리자] 탭에서 E열이 '전체부서접근'인 행의 D열(구글메일)만 허용
+ *  - 관리자 비밀번호: [프로젝트 설정 > 스크립트 속성]의 DASH_ADMIN_PW 값 (관리자가 직접 정해서 넣는다, 코드·깃허브에 적지 않음)
+ *  - 로그인에 성공하면 12시간짜리 세션 토큰을 내준다 (서명 키는 스크립트 속성 DASH_SESSION_KEY, 처음 실행 때 자동 생성)
  */
 
 const DASH = {
@@ -32,7 +37,118 @@ const DASH = {
   },
 };
 
+const AUTH = {
+  GOOGLE_CLIENT_ID: '497800427820-0jftci511sots7lcfv2533hnfnnfudpp.apps.googleusercontent.com', // 대시보드 config.js와 같은 값
+  MGR_SHEET_ID: '153cNYpbycU29T6piyjB_sW9rUGPSgRomdsNP-iXMVyE',   // 2026년 부서별교육참석명단 RAW DATA
+  MGR_TAB: '부서관리자',
+  ALL_ACCESS: '전체부서접근',
+  SESSION_HOURS: 12,
+};
+
+/** 주소만 알아서는 데이터를 받을 수 없다 — 로그인은 POST로 */
 function doGet() {
+  return json_({ error: 'AUTH_REQUIRED' });
+}
+
+/** 대시보드 요청: { action:'login', idToken | pw } 또는 { action:'data', session } */
+function doPost(e) {
+  let body = {};
+  try { body = JSON.parse(e.postData.contents || '{}'); } catch (err) { return json_({ error: 'BAD_REQUEST' }); }
+  try {
+    if (body.action === 'login') {
+      let who;
+      if (body.pw != null) {
+        const pw = PropertiesService.getScriptProperties().getProperty('DASH_ADMIN_PW');
+        if (!pw) return json_({ error: '관리자 비밀번호가 아직 설정되지 않았습니다. Apps Script 스크립트 속성에 DASH_ADMIN_PW를 넣어 주세요.' });
+        if (String(body.pw) !== pw) { Utilities.sleep(1200); return json_({ error: '비밀번호가 맞지 않습니다.' }); }
+        who = { email: 'admin', name: '관리자 (간호교육팀)', role: 'admin' };
+      } else if (body.idToken) {
+        const email = verifyIdToken_(body.idToken);
+        const m = allAccessManagers_()[email];
+        if (!m) return json_({ error: `${email} 계정은 대시보드 접근이 허용되지 않았습니다. 간호교육팀에 문의하세요.` });
+        who = { email: email, name: m.name, role: 'google' };
+      } else return json_({ error: 'BAD_REQUEST' });
+      const session = makeSession_(who);
+      return json_({ ok: true, session: session, me: who, data: dashboardData_() });
+    }
+    if (body.action === 'data') {
+      const who = readSession_(body.session);
+      if (!who) return json_({ error: 'SESSION_EXPIRED' });
+      // 구글 계정은 매번 허용 명단을 다시 확인 (명단에서 빠지면 바로 차단)
+      if (who.role === 'google' && !allAccessManagers_()[who.email]) return json_({ error: 'NOT_ALLOWED' });
+      return json_({ ok: true, me: who, data: dashboardData_() });
+    }
+    return json_({ error: 'BAD_REQUEST' });
+  } catch (err) {
+    return json_({ error: String(err && err.message || err) });
+  }
+}
+
+function json_(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** 구글 로그인 토큰 확인 → 이메일 (이 대시보드용 클라이언트에서 발급된, 확인된 이메일만) */
+function verifyIdToken_(tok) {
+  const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(tok), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('구글 로그인 정보를 확인하지 못했습니다. 다시 로그인해 주세요.');
+  const t = JSON.parse(res.getContentText());
+  if (t.aud !== AUTH.GOOGLE_CLIENT_ID) throw new Error('허용되지 않은 로그인 요청입니다.');
+  if (String(t.email_verified) !== 'true' || !t.email) throw new Error('이메일이 확인된 구글 계정만 로그인할 수 있습니다.');
+  if (Number(t.exp) * 1000 < Date.now()) throw new Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+  return String(t.email).trim().toLowerCase();
+}
+
+/** [부서관리자] 탭에서 '전체부서접근' 계정 { email: { name } } (5분 캐시) */
+function allAccessManagers_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('allAccess');
+  if (hit) return JSON.parse(hit);
+  const sh = SpreadsheetApp.openById(AUTH.MGR_SHEET_ID).getSheetByName(AUTH.MGR_TAB);
+  const out = {};
+  if (sh) {
+    const rows = sh.getDataRange().getValues();
+    const head = rows[0].map(v => String(v).trim());
+    const cMail = head.indexOf('구글메일주소') >= 0 ? head.indexOf('구글메일주소') : 3, cName = head.indexOf('관리자 성명') >= 0 ? head.indexOf('관리자 성명') : 1;
+    rows.slice(1).forEach(r => {
+      if (!r.some(v => String(v).trim() === AUTH.ALL_ACCESS)) return; // E열(접근 범위)에 '전체부서접근'
+      const mail = String(r[cMail] || '').trim().toLowerCase();
+      if (mail) out[mail] = { name: String(r[cName] || '').trim() };
+    });
+  }
+  cache.put('allAccess', JSON.stringify(out), 300);
+  return out;
+}
+
+function sessionKey_() {
+  const P = PropertiesService.getScriptProperties();
+  let k = P.getProperty('DASH_SESSION_KEY');
+  if (!k) { k = Utilities.getUuid() + Utilities.getUuid(); P.setProperty('DASH_SESSION_KEY', k); }
+  return k;
+}
+function sign_(s) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(s, sessionKey_())).replace(/=+$/, '');
+}
+function makeSession_(who) {
+  const payload = Utilities.base64EncodeWebSafe(JSON.stringify({ e: who.email, n: who.name, r: who.role, x: Date.now() + AUTH.SESSION_HOURS * 3600e3 }), Utilities.Charset.UTF_8).replace(/=+$/, '');
+  return payload + '.' + sign_(payload);
+}
+function readSession_(tok) {
+  const parts = String(tok || '').split('.');
+  if (parts.length !== 2 || sign_(parts[0]) !== parts[1]) return null;
+  let o; try { o = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString('UTF-8')); } catch (err) { return null; }
+  if (!o || o.x < Date.now()) return null;
+  return { email: o.e, name: o.n, role: o.r };
+}
+
+/** 편집기에서 한 번 실행: 외부 요청(구글 로그인 확인) 권한 승인용 + 허용 명단 확인 */
+function testAuthSetup() {
+  UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=x', { muteHttpExceptions: true });
+  CacheService.getScriptCache().remove('allAccess');
+  const m = allAccessManagers_();
+  Logger.log('전체부서접근 계정 %s개, 관리자 비밀번호 설정: %s', Object.keys(m).length, PropertiesService.getScriptProperties().getProperty('DASH_ADMIN_PW') ? '예' : '아니오');
+}
+
+function dashboardData_() {
   const cache = CacheService.getScriptCache();
   let json = cache.get('dashboard');
   if (!json) {
@@ -40,10 +156,10 @@ function doGet() {
       json = JSON.stringify(buildDashboardData_());
       cache.put('dashboard', json, DASH.CACHE_SECONDS);
     } catch (err) {
-      json = JSON.stringify({ error: String(err && err.message || err) });
+      return { error: String(err && err.message || err) };
     }
   }
-  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+  return JSON.parse(json);
 }
 
 /** 시트를 수정한 직후 바로 반영하고 싶을 때 편집기에서 실행 */
