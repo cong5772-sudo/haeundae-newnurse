@@ -834,7 +834,7 @@ function basisView(d){
   const ix = { now: 1, ye: 2, y1: 3 }[SB.rb] || 1;
   const pick = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, [v[0], v.length > 3 ? v[ix] : v[1]]]));
   const fac = o => Object.fromEntries(Object.entries(o || {}).map(([k, [p, ds]]) => { const c = k.split('|')[0]; return [k, [p, ds.filter(x => rbKeep(c, x))]]; }));
-  return Object.assign({}, d, { dept: pick(d.dept), maleDept: pick(d.maleDept), gender: fac(d.gender), ai: fac(d.ai), rank: fac(d.rank), track: fac(d.track),
+  return Object.assign({}, d, { dept: pick(d.dept), maleDept: pick(d.maleDept), gender: fac(d.gender), ai: fac(d.ai), rank: fac(d.rank), track: fac(d.track), school: fac(d.school),
     res: (d.res || []).filter(r => rbKeep(r[0], r[5])) });
 }
 function setData(data){
@@ -1190,6 +1190,21 @@ function periodBar(pr, list, idx){
   </section>`;
 }
 
+// 출신학교별 사직율: 막대는 5명 이상 학교만(사직율 순), 표는 전체 학교(인원 순)
+function schoolPanel(pr, NL){
+  const f = facetP(A.school || {}, pr), ks = Object.keys(f);
+  if (!ks.length) return '';
+  const N = ks.reduce((s, k) => s + f[k][0], 0), R = ks.reduce((s, k) => s + f[k][1], 0), avg = N ? R / N : 0;
+  const big = ks.filter(k => k !== '미기재' && f[k][0] >= 5).sort((a, b) => f[b][1] / f[b][0] - f[a][1] / f[a][0] || f[b][0] - f[a][0]);
+  const rows = ks.sort((a, b) => (a === '미기재') - (b === '미기재') || f[b][0] - f[a][0] || f[b][1] - f[a][1] || a.localeCompare(b));
+  const bars = big.length ? hbars(big.map(k => { const [n, r] = f[k]; return { label: k, v: r / n, vl: pct(r / n), n, c: r / n > avg ? 'var(--s2)' : 'var(--s1)', tip: `${k}: ${NL} ${n}명 중 사직 ${r}명 (${pct(r / n)})` }; }), { max: Math.max(.05, ...big.map(k => f[k][1] / f[k][0])) * 1.1, refs: [{ v: avg, label: '평균' }] }) : '<p class="note">5명 이상 발령된 학교가 없습니다.</p>';
+  return `<section class="panel w12"><div class="ph"><div><h2>출신학교별 사직율</h2><p>${esc(pr.label)} · 막대: ${NL} 5명 이상 학교 (주황 = 전체 평균 ${pct(avg)}보다 높음) · 표: 전체 ${rows.length}개 학교</p></div></div>
+    <div class="split"><div>${bars}</div>
+    <div class="tw mtbl"><table class="mt"><thead><tr><th>출신학교</th><th class="num">${NL}</th><th class="num">사직</th><th class="num">사직율</th><th class="num">사직자 중 비중</th></tr></thead><tbody>
+      ${rows.map(k => { const [n, r] = f[k]; return `<tr${k === '미기재' ? ' class="zrow"' : ''}><td><b>${esc(k)}</b></td><td class="num">${n}명</td><td class="num">${r ? `<b class="rdx">${r}명</b>` : '0명'}</td><td class="num">${n < 5 ? `<span class="zero">${pct(r / n)}</span>` : `<b>${pct(r / n)}</b>`}</td><td class="num">${R ? pct(r / R, 0) : '–'}</td></tr>`; }).join('')}
+    </tbody><tfoot><tr><td>합계</td><td class="num">${N}명</td><td class="num">${R}명</td><td class="num">${pct(avg)}</td><td class="num">${R ? '100%' : '–'}</td></tr></tfoot></table></div></div>
+    <div class="note">발령 인원이 5명 미만인 학교는 1명 차이로 사직율이 크게 달라져 표에서 회색으로 표시했습니다. 출신학교 자체보다 해당 학교 출신의 배치 부서·회차를 함께 보고 해석하세요.</div></section>`;
+}
 function p2(){
   const list = periodList(PS.mode), pr = rbPer(curPeriod()), idx = list.findIndex(x => x.key === pr.key);
   // 사직율의 분모 이름: 연도·전체 기간이면 발령 인원과 같고, 분기·월이면 '기간 중 재직'(기간 시작 전 사직자 제외)
@@ -1339,6 +1354,7 @@ function p2(){
           ${ks.map(k => { const [n, r] = fr[k]; return `<tr${k === '미기재' ? ' class="zrow"' : ''}><td><b>${k}</b></td><td class="num">${n}명</td><td class="num">${r ? `<b class="rdx">${r}명</b>` : '0명'}</td><td class="num"><b>${pct(r / n)}</b></td><td class="num">${pct(n / Math.max(1, N), 0)}</td><td class="num">${R ? pct(r / R, 0) : '–'}</td></tr>`; }).join('')}
           </tbody><tfoot><tr><td>합계</td><td class="num">${N}명</td><td class="num">${R}명</td><td class="num">${pct(R / Math.max(1, N))}</td><td class="num">100%</td><td class="num">${R ? '100%' : '–'}</td></tr></tfoot></table></div>`; })()}
       ${PS.mode === 'now' ? '<div class="note">등급·구간별 인원(n)이 적으면 1~2명 차이로 사직율이 크게 달라집니다. 빗금 막대(10명 미만)는 해석에 주의하세요.</div>' : ''}</section>
+    ${schoolPanel(pr, NL)}
     <section class="panel"><div class="ph"><div><h2>사직사유 분포</h2><p>기간 중 사직자 · 복수 사유는 각각 집계</p></div>
       ${t.r && unknown / t.r > .3 ? `<span class="st warn"><i aria-hidden="true">▲</i>사유 불명 ${pct(unknown / t.r, 0)}</span>` : ''}</div>
       ${t.r ? hbars(rs.map(([k, v]) => ({ label: k, v, vl: v + '명', c: k === '미기재' || k === '기타' ? 'var(--muted)' : 'var(--s2)', tip: `${k}: ${v}명` }))) : none}
